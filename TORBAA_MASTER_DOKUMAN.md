@@ -1,159 +1,221 @@
 # TORBAA — Master Proje Spesifikasyon Dokümanı
 
-> **Sürüm**: 2.0  
-> **Tarih**: 22 Temmuz 2026  
-> **Kapsam**: B2B2C Sadakat, Keşif, İşletme Paneli ve Özgün "TORBAA YEMEK KARTI" Ekosistemi
+> **Sürüm:** 3.0  
+> **Tarih:** 22 Temmuz 2026  
+> **Durum:** Ürün temeli / doğrulama aşaması
 
----
+## 1. Ürün tanımı
 
-## 1. GİRİŞ VE SİSTEM MİMARİSİ
+TORBAA; kullanıcıları çevresindeki işletmeler, kampanyalar ve avantajlarla buluşturan; işletmelerin müşterilerini tekrar kazanmasını, satışlarını artırmasını ve dijital sadakat programlarını yönetmesini sağlayan B2B2C sadakat, keşif ve yerel ticaret platformudur.
 
-TORBAA; üçüncü taraf yemek kartı ihraççılarının yüksek komisyon yüklerine (%10-%12) bağımlı olmadan, **kendi yerli ve özgün "TORBAA YEMEK KARTI" markasını ihraç eden** uçtan uca bir B2B2C sadakat, keşif, e-ticaret ve kurumsal yan haklar platformudur.
+TORBAA Yemek Kartı, platformun kurumsal şirketler, çalışanlar ve yemek işletmeleri için sunduğu güçlü ana ürünlerden biridir; ancak TORBAA'nın tamamı değildir. Ana ekosistem restoranların yanında kafe, market, teknoloji, giyim, güzellik ve diğer yerel işletme kategorilerini kapsar.
 
-```mermaid
-graph TD
-    A["Kurumsal Şirket (İK)"] -->|"GVK 23/8 Bütçesi Yükler"| B["TORBAA Platformu (İhraççı)"]
-    B -->|"TORBAA Yemek Bakiyesi"| C["Çalışan / Kullanıcı Cüzdanı"]
-    C -->|"QR Ödeme & %5 Toin Kazanım"| D["Üye Restoran (POS)"]
-    B -->|"Düşük Komisyon (%3-%5) + 7 Gün Hakediş"| D
-    C -->|"Toin Harca / Hediye Çeki"| E["Toin Ekosistemi"]
-```
+## 2. Ürün ilkeleri
 
-### 1.1 Temel Aktörler ve Roller
+1. TORBAA'nın ana işi, müşteriyi işletmeye geri getiren sadakat ve keşif altyapısıdır.
+2. Yemek kartı, düzenli kullanım ve yüksek işlem sıklığı oluşturan kurumsal yan hak ürünüdür.
+3. Yemek bakiyesi ve Toin aynı cüzdan içinde gösterilebilir fakat ayrı hesap, kural ve muhasebe defterlerinde tutulur.
+4. İşletmelerden gizli ücret alınmaz; komisyon, kesinti, net hakediş ve ödeme tarihi önceden gösterilir.
+5. Kesin komisyon ve Toin oranları finansal model doğrulanmadan kod içine sabitlenmez.
+6. Finansal hareketler silinmez; iptal ve iadeler ters muhasebe kaydıyla işlenir.
+7. P2P Toin transferi, OCR, şans çarkı ve hediye çeki pazarı MVP dışıdır.
+8. Gerçek para işlemleri lisanslı iş ortağı ve hukuki değerlendirme tamamlanmadan aktif edilmez.
 
-1. **TORBAA Yemek Kartı İhraççısı (Takas & Yayıncı Kuruluş)**:
-   - Kurumsal şirketlerle TORBAA Yemek Kartı sözleşmesi imzalar.
-   - Üye restoranlara düşük komisyonlu (%3-%5) takas ve hakediş ödemelerini sağlar.
-   - GVK 23/8 Vergi İstisnası faturalandırma ve raporlamasını yönetir.
-2. **Mobil Tüketici / Şirket Çalışanı**:
-   - Çipli 16 haneli dijital **TORBAA Yemek Kartı**'na sahiptir.
-   - Yemek harcamalarında **%5 Toin** ekstra sadakat puanı kazanır.
-3. **Üye Restoran & Bayi Sahibi**:
-   - Anlaşmalı TORBAA Üye İşletmesi statüsündedir. Kasada QR kabul eder.
-   - Biriken B2B Toin bakiyeleri ile TORBAA tedarik mağazasından sarf malzeme siparişi verir.
-4. **Kurumsal Şirket İK Yöneticisi**:
-   - Çalışanlarına aylık vergi istisnalı yemek bakiyesi ve özel gün primleri tanımlar.
-5. **Kasiyer / POS Personeli**:
-   - TORBAA Yemek Kartı QR Tahsilat Modu ile dinamik QR kod oluşturup ödemeyi alır.
+## 3. Ürün ailesi
 
----
+### 3.1 TORBAA Keşfet
+- Konum ve kategori bazlı işletme keşfi
+- Kampanya ve fırsat listeleri
+- Favoriler, harita ve işletme profilleri
+- Kişiselleştirilmiş öneriler için ileride veri altyapısı
 
-## 2. İŞ KURALLARI VE DİJİTAL VARLIK MANTIĞI
+### 3.2 TORBAA Toin
+- Harcama veya görev karşılığı sadakat puanı
+- İşletme, şirket veya TORBAA tarafından fonlanabilen kampanyalar
+- İade halinde geri alma
+- Süre, limit, kampanya bütçesi ve kötüye kullanım kontrolü
+- Yemek bakiyesinden tamamen ayrı ledger
 
-### 2.1 "TORBAA YEMEK KARTI" Öz Ürün Kuralları
-- **GVK 23/8 Vergi İstisnası**: Yüklenen yemek bakiyeleri %100 Gelir Vergisi ve SGK priminden istisnadır.
-- **Çift Bakiye Cüzdanı (Dual Wallet)**:
-  - `TORBAA Yemek Kartı Bakiyesi`: Anlaşmalı restoranlarda geçerli vergi istisnalı bütçe (TL).
-  - `Toin Sadakat Bakiyesi`: Nakit değerli puan (`1 Toin = 1 TL`).
-- **Çifte Kazanım**: TORBAA Yemek Kartı ile yapılan yemek ödemelerinde harcanan tutar üzerinden ekstra **%5 Toin** kazanılır.
-- **Komisyon & Takas**: Restoranlardan %3-%5 komisyon alınır, 7 gün içinde banka hesabına aktarılır.
+### 3.3 TORBAA Yemek Kartı
+- Kurumsal şirketten çalışan hesabına yemek bütçesi yükleme
+- İzin verilen işletme ve kategori kontrolü
+- Dinamik QR ile ödeme
+- Komisyon, hakediş, iade ve mutabakat
+- En düşük toplam maliyet ve fiyat koruma stratejisi
 
-### 2.2 Sadakat & Seviye Motoru (Tier Engine)
-- **Değer Denkliği**: `1 Toin = 1 TL`.
-- **Bronz (0-499 TP)**: %5 Toin kazanımı.
-- **Gümüş (500-999 TP)**: %7 Toin kazanımı + Özel indirimler.
-- **Altın (1000-2499 TP)**: %10 Toin kazanımı + VIP müşteri hizmetleri.
-- **Platin (2500+ TP)**: %15 Toin kazanımı + Çift Şans Çarkı hakkı.
+### 3.4 TORBAA İşletme
+- Başvuru ve belge yönetimi
+- Şube, kasiyer ve yetki yönetimi
+- Kampanya oluşturma
+- QR işlem kabulü
+- İşlem, iade, hakediş ve raporlama
+- Müşteri ve tekrar ziyaret analitiği
 
----
+### 3.5 TORBAA Kurumsal
+- Şirket, çalışan, departman ve maliyet merkezi yönetimi
+- Toplu yükleme ve onay akışları
+- Fatura, ödeme ve kullanım raporları
+- Çalışan kartını askıya alma ve işten ayrılma işlemleri
 
-## 3. VERİ MODELLERİ (TYPESCRIPT SCHEMAS)
+### 3.6 TORBAA Admin
+- Kullanıcı, şirket, işletme ve şube yönetimi
+- Komisyon, hakediş ve Toin kuralları
+- Kampanya onayı
+- İade, itiraz, risk ve destek süreçleri
+- Rol, yetki, audit log ve sistem ayarları
 
-```typescript
-export interface User {
-  id: string;
-  phone: string;
-  name: string;
-  email?: string;
-  avatar?: string;
-  toinBalance: number;
-  torbaaMealBalance: number; // TORBAA Öz Dijital Yemek Kartı Bakiyesi (TL)
-  corporateInfo?: {
-    companyId: string;
-    companyName: string;
-    employeeId: string;
-    monthlyAllowance: number;
-    cardNo: string; // Örn: 9876-1234-5678-0001
-  };
-  dailyEarned: number;
-  lastEarnDate: string;
-  tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
-  tierPoints: number;
-  spinAvailable: boolean;
-  vouchers?: Voucher[];
-}
+### 3.7 TORBAA Tedarik
+- İşletmelere yönelik sarf ve toptan ürün pazaryeri
+- MVP sonrası fazda geliştirilecektir
 
-export interface CorporateCompany {
-  id: string;
-  companyName: string;
-  taxNo: string;
-  taxOffice: string;
-  address: string;
-  employeeCount: number;
-  monthlyMealBudgetPerEmployee: number;
-  corporateToinBalance: number;
-  torbaaContractNo: string;
-}
+## 4. Roller
 
-export interface Merchant {
-  id: string;
-  name: string;
-  category: string;
-  image: string;
-  address: string;
-  distance: string;
-  rating: number;
-  isTorbaaMealMerchant: boolean;
-  commissionRate: number; // Örn: 0.04 (%4)
-  pendingSettlementTL: number;
-  menu: MenuItem[];
-  campaigns: Campaign[];
-  monthlyTarget: number;
-  monthlyProgress: number;
-}
+- **Tüketici:** Keşfeder, kampanya kullanır, Toin kazanır ve harcar.
+- **Şirket çalışanı:** Tüketici özelliklerine ek olarak yemek bakiyesi kullanır.
+- **İşletme sahibi:** İşletme, şube, kampanya, işlem ve hakediş yönetir.
+- **Şube yöneticisi:** Yetkili olduğu şubeleri ve personeli yönetir.
+- **Kasiyer:** Sadece ödeme oluşturma, doğrulama ve yetkili iade aksiyonlarına erişir.
+- **Kurumsal yönetici:** Şirket sözleşmesi, çalışan ve bütçe yönetir.
+- **İK/finans kullanıcısı:** Yetkisine göre çalışan, yükleme, fatura ve rapor ekranlarına erişir.
+- **TORBAA operasyon:** Başvuru, belge, destek ve içerik süreçlerini yönetir.
+- **TORBAA finans:** Mutabakat, komisyon, hakediş, iade ve finansal raporlamayı yönetir.
+- **TORBAA risk yöneticisi:** Şüpheli işlem, limit ve hesap kısıtlama işlemlerini yönetir.
+- **Süper admin:** Sistem ayarları ve rol politikalarını yönetir.
 
-export interface Transaction {
-  id: string;
-  userId: string;
-  merchantId: string;
-  merchantName: string;
-  type: 'earn' | 'spend' | 'torbaa_meal_pay';
-  paymentMethod: 'torbaa_meal_card' | 'toin_balance' | 'credit_card';
-  amount: number;
-  toinAmount: number;
-  date: string;
-  description: string;
-}
-```
+## 5. Cüzdan ve hesap mimarisi
 
----
+Kullanıcı arayüzünde tek cüzdan bulunabilir ancak minimum şu hesaplar ayrı tutulur:
 
-## 4. SAYFA SPESİFİKASYONLARI VE ROTALAR
+- Kullanıcı yemek bakiyesi hesabı
+- Kullanıcı Toin hesabı
+- Kurumsal şirket fonlama hesabı
+- İşletme bekleyen hakediş hesabı
+- İşletme ödenebilir hakediş hesabı
+- TORBAA komisyon geliri hesabı
+- Kampanya bütçesi hesabı
+- İade ve ters işlem hesabı
+- Bekleyen/şüpheli işlem hesabı
 
-### 4.1 Mobil Uygulama (`/mobile/...`)
-- `/mobile/login`: Telefon numarası & OTP doğrulama ekranı.
-- `/mobile/explore`: Restoran/Mağaza arama, filtreler, *"TORBAA Yemek Kartı Geçen Yerler"*, Seviye kartı, 7 günlük streak.
-- `/mobile/merchant/[id]`: İşletme detay, menü, sepete ekleme, kampanya detayları.
-- `/mobile/qr`: Ödeme yöntemi seçimi (TORBAA Yemek Kartı / Toin Harca / Toin Kazan %5), QR tarayıcı & token girişi.
-- `/mobile/wallet`: Dijital 16 haneli çipli TORBAA Yemek Kartı widget'ı, Çift Bakiye, Hediye Çekleri Pazarı, P2P Transfer.
-- `/mobile/profile`: Seviye rozetleri, başarım rozetleri grid'i, oturum kapatma.
-- `/mobile/campaigns`: Kampanya listesi.
+Bakiye alanları yalnızca hızlı okuma için türetilmiş değer olabilir. Finansal doğruluğun kaynağı değiştirilemez ledger kayıtlarıdır.
 
-### 4.2 İşletme Paneli (`/panel/...`)
-- `/panel/login`: İşletme giriş ekranı.
-- `/panel/dashboard`: Ciro, TORBAA hakediş alacağı, Hızlı POS Kasiyer QR Tahsilat Modalı.
-- `/panel/balance`: Hakediş ödeme takvimi, banka hesabı aktarımı, B2B Toptan Tedarik Mağazası.
-- `/panel/transactions`: Günlük ve aylık tahsilat listesi.
-- `/panel/campaigns`: İşletmeye özel kampanya oluşturma.
+## 6. Toin ekonomisi
 
-### 4.3 Kurumsal İK Portalı (`/corporate/...`)
-- `/corporate/dashboard`: Şirket çalışanlarına toplu TORBAA Yemek Kartı yükleme, GVK 23/8 Vergi İstisna Raporu (SGK ve Gelir Vergisi tasarruf dökümü).
+- `1 Toin = 1 TL` kararı kesinleşmiş finansal kural değildir; iş modeli ve hukuki değerlendirme sonrası onaylanacaktır.
+- Standart kazanım oranı kod içine `%5` olarak yazılmayacaktır.
+- Başlangıç varsayımı, sürdürülebilir finansal modele göre düşük taban oran ve kampanya katkısıdır.
+- Kampanyanın finansman kaynağı kayıt altına alınır: işletme, kurumsal şirket veya TORBAA.
+- Günlük, aylık ve kampanya bazlı limit uygulanır.
+- İade ve ters işlemde daha önce verilen Toin geri alınır.
+- Eksi Toin bakiyesi, bloke veya sonraki kazanımlardan tahsil politikası ayrıca belirlenir.
 
----
+## 7. Yemek kartı fiyat stratejisi
 
-## 5. API SPEKLERİ
+TORBAA'nın iddiası tek başına düşük komisyon değil, **en düşük toplam işletme maliyeti** olacaktır.
 
-- `POST /api/auth/otp/verify`: OTP doğrulama & kullanıcı oturumu.
-- `GET /api/merchants/nearby`: Üye işletmeler listesi.
-- `POST /api/qr/meal-pay`: TORBAA Yemek Kartı bakiyesinden harcama + %5 Toin tanımlama.
-- `POST /api/corporate/allowance`: Çalışanlara toplu bakiye aktarımı.
+Toplam maliyet karşılaştırmasına şunlar dahil edilir:
+
+- işlem komisyonu,
+- cihaz veya uygulama bedeli,
+- kurulum,
+- bakım ve teknik destek,
+- erken ödeme kesintisi,
+- banka transferi,
+- aylık üyelik,
+- zorunlu kampanya katkısı,
+- diğer sözleşmesel kesintiler.
+
+Planlanan paketler:
+
+- **Standart:** En düşük maliyet, standart hakediş süresi
+- **Hızlı:** Daha kısa hakediş, açıkça gösterilen farklı fiyat
+- **Sabit paket:** Belirli hacme kadar düşük veya sıfır işlem komisyonu karşılığında aylık paket
+- **Kurumsal/zincir:** Hacim ve entegrasyona göre özel teklif
+
+Kesin oranlar, ödeme ortağı maliyeti ve pilot verileri doğrulanmadan yayınlanmaz.
+
+## 8. Temel iş akışları
+
+### 8.1 İşletme katılımı
+Başvuru → belge yükleme → yetkili ve IBAN doğrulama → risk kontrolü → sözleşme → admin onayı → şube/kasiyer kurulumu.
+
+### 8.2 Kurumsal şirket katılımı
+Başvuru → şirket ve yetkili doğrulama → sözleşme → ödeme/fonlama yöntemi → çalışan aktarımı → yükleme onayı → kullanım.
+
+### 8.3 Sadakat işlemi
+İşletme/kampanya doğrulama → işlem tutarı → ödül kuralı → bütçe ve limit kontrolü → ledger kayıtları → kullanıcı bildirimi.
+
+### 8.4 Yemek kartı ödemesi
+Dinamik QR → kasiyer/şube doğrulama → kullanıcı onayı → bakiye ve kategori kontrolü → idempotency kontrolü → çift taraflı ledger → işlem sonucu → hakediş planı.
+
+### 8.5 İade
+Orijinal işlem doğrulama → yetki ve süre kontrolü → tam/kısmi iade → ters ledger kayıtları → Toin geri alma → hakediş düzeltmesi → bildirim.
+
+### 8.6 Hakediş
+Uygun işlemler → komisyon hesaplama → risk/bloke kontrolü → mutabakat → ödeme dosyası veya iş ortağı talimatı → banka sonucu → ledger kapanışı.
+
+## 9. MVP kapsamı
+
+### Dahil
+- Kullanıcı ve işletme kayıt akışları
+- Keşfet ve işletme profili
+- Kampanya oluşturma ve listeleme
+- QR ile Toin kazanma/harcama prototipi
+- İşletme paneli
+- Admin paneli
+- Rol ve yetki altyapısı
+- Audit log
+- Ledger tasarımı ve test ortamı
+- Kurumsal şirket ve yemek kartı akışlarının kontrollü pilot altyapısı
+
+### MVP dışı
+- P2P Toin transferi
+- Şans çarkı
+- OCR fiş kampanyası
+- Hediye çeki pazarı
+- Tedarik pazaryeri
+- Kendi ödeme kuruluşu lisansı
+- Fiziksel POS zorunluluğu
+
+## 10. Portal rotaları
+
+### Mobil
+`/mobile/login`, `/mobile/explore`, `/mobile/merchant/[id]`, `/mobile/campaigns`, `/mobile/qr`, `/mobile/wallet`, `/mobile/transactions`, `/mobile/profile`, `/mobile/support`
+
+### İşletme
+`/panel/onboarding`, `/panel/dashboard`, `/panel/branches`, `/panel/cashiers`, `/panel/campaigns`, `/panel/transactions`, `/panel/refunds`, `/panel/settlements`, `/panel/bank-account`, `/panel/reports`, `/panel/support`, `/panel/settings`
+
+### Kurumsal
+`/corporate/onboarding`, `/corporate/dashboard`, `/corporate/employees`, `/corporate/departments`, `/corporate/allowances`, `/corporate/approvals`, `/corporate/invoices`, `/corporate/reports`, `/corporate/settings`
+
+### Admin
+`/admin/dashboard`, `/admin/users`, `/admin/merchants`, `/admin/companies`, `/admin/transactions`, `/admin/refunds`, `/admin/settlements`, `/admin/campaigns`, `/admin/rewards`, `/admin/risk`, `/admin/support`, `/admin/audit`, `/admin/settings`
+
+## 11. Teknik zorunluluklar
+
+- PostgreSQL ve migration sistemi
+- Çift taraflı, değiştirilemez finansal ledger
+- Idempotency key
+- Dinamik ve süreli QR
+- Rol tabanlı erişim kontrolü
+- Audit log
+- Hassas veri şifreleme ve maskeleme
+- Rate limiting
+- İşlem limitleri ve risk kuralları
+- Kuyruk tabanlı bildirim ve hakediş işleme
+- Test, staging ve production ayrımı
+- Otomatik yedekleme ve felaket kurtarma planı
+
+## 12. Başarı ölçütleri
+
+- Aktif kullanıcı ve işletme sayısı
+- Kullanıcı başına aylık işlem sıklığı
+- Tekrar ziyaret oranı
+- Kampanya dönüşüm oranı
+- İşletme başına işlem hacmi
+- Ortalama toplam işletme maliyeti
+- Hakediş süresi ve zamanında ödeme oranı
+- Toin yükümlülüğü ve kullanım oranı
+- Sahtecilik/itiraz oranı
+- Kurumsal müşteri devamlılığı
+
+Detaylı kararlar `docs/` klasöründe, henüz kesinleşmemiş konular `OPEN_QUESTIONS.md` dosyasında tutulur.
