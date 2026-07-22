@@ -1,0 +1,131 @@
+import { User, Merchant, CorporateCompany, Transaction, Voucher } from '../types';
+
+export const INITIAL_USER: User = {
+  id: 'usr_001',
+  name: 'Ahmet Yılmaz',
+  phone: '5321234567',
+  email: 'ahmet.yilmaz@acme.com',
+  toinBalance: 745,
+  torbaaMealBalance: 4500,
+  corporateInfo: {
+    companyId: 'corp_100',
+    companyName: 'Acme Holding A.Ş.',
+    employeeId: 'EMP-9921',
+    monthlyAllowance: 4500,
+    cardNo: '9876-1234-5678-0001',
+  },
+  dailyEarned: 15,
+  lastEarnDate: new Date().toISOString(),
+  tier: 'Gold',
+  tierPoints: 1250,
+  spinAvailable: true,
+  vouchers: [
+    {
+      id: 'vch_01',
+      brand: 'Trendyol',
+      title: '100 TL İndirim Çeki',
+      costToin: 100,
+      valueTL: 100,
+      code: 'TRND-9812-X',
+      expiry: '2026-12-31',
+      image: 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=300',
+      isRedeemed: false,
+    },
+  ],
+};
+
+export const INITIAL_MERCHANTS: Merchant[] = [
+  {
+    id: 'mer_101',
+    name: 'Burger & Co. Levent',
+    category: 'Fast Food',
+    image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=600',
+    address: 'Büyükdere Cd. No:122, Levent',
+    distance: '350m',
+    rating: 4.8,
+    isTorbaaMealMerchant: true,
+    commissionRate: 0.04,
+    pendingSettlementTL: 14250,
+    monthlyTarget: 50000,
+    monthlyProgress: 42500,
+    menu: [
+      { id: 'm1', name: 'Smash Truffle Burger Menu', price: 280, category: 'Menüler' },
+      { id: 'm2', name: 'Cheeseburger', price: 220, category: 'Burgeler' },
+      { id: 'm3', name: 'Patates Cipsi (Baharatlı)', price: 75, category: 'Yan Ürünler' },
+    ],
+    campaigns: [
+      {
+        id: 'cmp_1',
+        merchantId: 'mer_101',
+        title: 'TORBAA Yemek Kartına %10 Ekstra Toin',
+        description: 'TORBAA Yemek Kartı ile ödemelerde +%10 bonus Toin fırsatı.',
+        type: 'earn',
+        earnRate: 0.10,
+        startDate: '2026-07-01',
+        endDate: '2026-08-31',
+        quota: 500,
+        usedCount: 142,
+        isActive: true,
+      },
+    ],
+  },
+  {
+    id: 'mer_102',
+    name: 'Kahve Dünyası Maslak',
+    category: 'Kafe',
+    image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600',
+    address: 'Maslak Mah. Ahi Evran Cd.',
+    distance: '800m',
+    rating: 4.6,
+    isTorbaaMealMerchant: true,
+    commissionRate: 0.035,
+    pendingSettlementTL: 8900,
+    monthlyTarget: 30000,
+    monthlyProgress: 24000,
+    menu: [
+      { id: 'm10', name: 'Iced Caramel Latte', price: 95, category: 'Soğuk Kahveler' },
+      { id: 'm11', name: 'Filtre Kahve (Grande)', price: 70, category: 'Sıcak Kahveler' },
+      { id: 'm12', name: 'Cheesecake San Sebastian', price: 130, category: 'Tatlılar' },
+    ],
+    campaigns: [],
+  },
+];
+
+export const INITIAL_CORPORATE: CorporateCompany = {
+  id: 'corp_100',
+  companyName: 'Acme Holding A.Ş.',
+  taxNo: '1234567890',
+  taxOffice: 'Zincirlikuyu',
+  address: 'Büyükdere Cd. No:195 Levent / İstanbul',
+  employeeCount: 145,
+  monthlyMealBudgetPerEmployee: 4500,
+  corporateToinBalance: 12500,
+  torbaaContractNo: 'TRB-2026-9912',
+};
+
+export const INITIAL_TRANSACTIONS: Transaction[] = [
+  {
+    id: 'txn_901',
+    userId: 'usr_001',
+    merchantId: 'mer_101',
+    merchantName: 'Burger & Co. Levent',
+    type: 'torbaa_meal_pay',
+    paymentMethod: 'torbaa_meal_card',
+    amount: 280,
+    toinAmount: 14, // %5 Toin
+    date: '2026-07-22 12:45',
+    description: 'TORBAA Yemek Kartı Ödemesi (+14 Toin Kazanıldı)',
+  },
+  {
+    id: 'txn_902',
+    userId: 'usr_001',
+    merchantId: 'mer_102',
+    merchantName: 'Kahve Dünyası Maslak',
+    type: 'spend',
+    paymentMethod: 'toin_balance',
+    amount: 95,
+    toinAmount: -95,
+    date: '2026-07-21 16:20',
+    description: 'Toin Bakiyesi ile Kahve Satın Alımı',
+  },
+];
