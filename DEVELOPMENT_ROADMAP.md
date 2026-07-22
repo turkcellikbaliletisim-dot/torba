@@ -7,23 +7,34 @@ Bu yol haritası görsel demo üretmekten önce ürün, finans, güvenlik ve ope
 - [x] TORBAA'nın ana işini sadakat, keşif ve yerel ticaret olarak tanımla.
 - [x] Yemek kartını ekosistemin güçlü ana ürünü olarak konumlandır.
 - [x] Eski FLOW belgelerini repodan temizle.
-- [ ] Toin değer denkliği ve kullanım koşullarını karara bağla.
+- [x] Toin ekonomisi ve kullanım prensiplerini dokümante et.
+- [ ] Toin değer denkliğini hukuk ve finans uzmanıyla kesinleştir.
 - [ ] Yemek kartı iş ortaklığı/lisans modelini hukuk ve finans uzmanıyla doğrula.
 - [ ] Ödeme kuruluşu adayları ve maliyet kalemlerini karşılaştır.
-- [ ] Pilot şehir, işletme ve kurumsal şirket hedeflerini kesinleştir.
+- [x] Balıkesir pilot taslağını ve hedeflerini dokümante et.
+- [ ] Pilot işletme ve kurumsal şirket adaylarını kesinleştir.
 
 ## Faz 1 — Ürün ve teknik spesifikasyon
 
-- [ ] Roller ve yetki matrisi
-- [ ] Mobil ekran PRD'leri
-- [ ] İşletme paneli PRD'leri
-- [ ] Kurumsal panel PRD'leri
-- [ ] Admin paneli PRD'leri
-- [ ] Toin kural motoru
-- [ ] Yemek kartı fiyat ve paket modeli
-- [ ] Komisyon ve hakediş motoru
-- [ ] İade, itiraz ve ters işlem kuralları
-- [ ] KVKK, sözleşme ve veri saklama gereksinimleri
+- [x] Roller ve yetki matrisi
+- [x] Mobil uygulama kapsamı ve kabul kriterleri
+- [x] İşletme paneli kapsamı ve kabul kriterleri
+- [x] Kurumsal panel kapsamı ve kabul kriterleri
+- [x] Admin paneli kapsamı ve kabul kriterleri
+- [x] Toin ekonomi ve kural prensipleri
+- [x] Yemek kartı fiyat ve paket modeli
+- [x] Komisyon ve hakediş modeli
+- [x] İade, itiraz ve ters işlem kuralları
+- [x] KVKK, sözleşme ve veri saklama gereksinimleri
+- [x] Veritabanı şeması
+- [x] API sözleşmeleri
+- [x] Güvenlik mimarisi
+- [x] Test planı
+- [x] DevOps ve deployment yaklaşımı
+- [x] Operasyon, destek ve KPI sistemi
+- [x] Codex geliştirme talimatı
+
+**Çıkış kriteri:** Ürün ve teknik temel belgeleri çapraz kontrol edilmiş, açık kararlar ayrı listelenmiş ve geliştirme ajanı için tek doküman indeksi hazırlanmış olmalıdır.
 
 ## Faz 2 — Veri, ledger ve güvenlik temeli
 
