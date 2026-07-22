@@ -1,9 +1,10 @@
 import type { SqlClient } from '@/lib/db/sql';
 import { validateBalancedEntries } from '@/lib/domain/ledger';
 import type {
-  LedgerRecord,
+  LedgerEntryRecord,
   LedgerRepository,
   LedgerTransactionInput,
+  LedgerTransactionRecord,
 } from '@/lib/repositories/contracts';
 
 interface LedgerTransactionRow {
@@ -16,10 +17,32 @@ interface LedgerTransactionRow {
   reversed_transaction_id: string | null;
 }
 
+interface LedgerEntryRow {
+  id: string;
+  ledger_transaction_id: string;
+  wallet_id: string;
+  direction: 'DEBIT' | 'CREDIT';
+  amount_minor: string | number | bigint;
+}
+
+function mapTransaction(row: LedgerTransactionRow): LedgerTransactionRecord {
+  return {
+    id: row.id,
+    transactionType: row.transaction_type,
+    ...(row.external_reference ? { externalReference: row.external_reference } : {}),
+    idempotencyKey: row.idempotency_key,
+    status: row.status,
+    occurredAt: new Date(row.occurred_at),
+    ...(row.reversed_transaction_id
+      ? { reversedTransactionId: row.reversed_transaction_id }
+      : {}),
+  };
+}
+
 export class SqlLedgerRepository implements LedgerRepository {
   constructor(private readonly client: SqlClient) {}
 
-  async findById(id: string): Promise<LedgerRecord | null> {
+  async findTransactionById(id: string): Promise<LedgerTransactionRecord | null> {
     const result = await this.client.query<LedgerTransactionRow>(
       `SELECT id, transaction_type, external_reference, idempotency_key, status,
               occurred_at, reversed_transaction_id
@@ -28,21 +51,12 @@ export class SqlLedgerRepository implements LedgerRepository {
       [id],
     );
 
-    const row = result.rows[0];
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      transactionType: row.transaction_type,
-      externalReference: row.external_reference,
-      idempotencyKey: row.idempotency_key,
-      status: row.status,
-      occurredAt: new Date(row.occurred_at),
-      reversedTransactionId: row.reversed_transaction_id,
-    };
+    return result.rows[0] ? mapTransaction(result.rows[0]) : null;
   }
 
-  async findByIdempotencyKey(key: string): Promise<LedgerRecord | null> {
+  async findTransactionByIdempotencyKey(
+    key: string,
+  ): Promise<LedgerTransactionRecord | null> {
     const result = await this.client.query<LedgerTransactionRow>(
       `SELECT id, transaction_type, external_reference, idempotency_key, status,
               occurred_at, reversed_transaction_id
@@ -51,27 +65,34 @@ export class SqlLedgerRepository implements LedgerRepository {
       [key],
     );
 
-    const row = result.rows[0];
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      transactionType: row.transaction_type,
-      externalReference: row.external_reference,
-      idempotencyKey: row.idempotency_key,
-      status: row.status,
-      occurredAt: new Date(row.occurred_at),
-      reversedTransactionId: row.reversed_transaction_id,
-    };
+    return result.rows[0] ? mapTransaction(result.rows[0]) : null;
   }
 
-  async create(input: LedgerTransactionInput): Promise<LedgerRecord> {
+  async listEntries(transactionId: string): Promise<LedgerEntryRecord[]> {
+    const result = await this.client.query<LedgerEntryRow>(
+      `SELECT id, ledger_transaction_id, wallet_id, direction, amount_minor
+       FROM ledger_entries
+       WHERE ledger_transaction_id = $1
+       ORDER BY created_at, id`,
+      [transactionId],
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      ledgerTransactionId: row.ledger_transaction_id,
+      walletId: row.wallet_id,
+      direction: row.direction,
+      amountMinor: BigInt(row.amount_minor),
+    }));
+  }
+
+  async create(input: LedgerTransactionInput): Promise<LedgerTransactionRecord> {
     validateBalancedEntries(input.entries);
 
-    const existing = await this.findByIdempotencyKey(input.idempotencyKey);
+    const existing = await this.findTransactionByIdempotencyKey(input.idempotencyKey);
     if (existing) return existing;
 
-    const transactionResult = await this.client.query<LedgerTransactionRow>(
+    const result = await this.client.query<LedgerTransactionRow>(
       `INSERT INTO ledger_transactions
          (transaction_type, external_reference, idempotency_key, status, occurred_at, reversed_transaction_id)
        VALUES ($1, $2, $3, 'POSTED', COALESCE($4, NOW()), $5)
@@ -86,7 +107,7 @@ export class SqlLedgerRepository implements LedgerRepository {
       ],
     );
 
-    const transaction = transactionResult.rows[0];
+    const transaction = result.rows[0];
     if (!transaction) throw new Error('Ledger transaction could not be created.');
 
     for (const entry of input.entries) {
@@ -98,14 +119,6 @@ export class SqlLedgerRepository implements LedgerRepository {
       );
     }
 
-    return {
-      id: transaction.id,
-      transactionType: transaction.transaction_type,
-      externalReference: transaction.external_reference,
-      idempotencyKey: transaction.idempotency_key,
-      status: transaction.status,
-      occurredAt: new Date(transaction.occurred_at),
-      reversedTransactionId: transaction.reversed_transaction_id,
-    };
+    return mapTransaction(transaction);
   }
 }
