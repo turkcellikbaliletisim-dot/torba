@@ -1,64 +1,129 @@
-# DEVELOPMENT_ROADMAP.md — Codex / AI Geliştirme Yol Haritası
+# TORBAA — Geliştirme Yol Haritası
 
-Bu doküman, TORBAA platformunun sırasıyla geliştirilmesi için hazırlanan adım adım görev ve kontrol listesidir (AI / Codex Roadmap).
+Bu yol haritası görsel demo üretmekten önce ürün, finans, güvenlik ve operasyon temelini kurar. Görevler onay sırasına göre ilerletilmelidir.
 
----
+## Faz 0 — Ürün kararları ve doğrulama
 
-## 🏁 FAZ 1: ÇEKİRDEK VERİ VE TİP MİMARİSİ (CORE & TYPES)
+- [x] TORBAA'nın ana işini sadakat, keşif ve yerel ticaret olarak tanımla.
+- [x] Yemek kartını ekosistemin güçlü ana ürünü olarak konumlandır.
+- [x] Eski FLOW belgelerini repodan temizle.
+- [ ] Toin değer denkliği ve kullanım koşullarını karara bağla.
+- [ ] Yemek kartı iş ortaklığı/lisans modelini hukuk ve finans uzmanıyla doğrula.
+- [ ] Ödeme kuruluşu adayları ve maliyet kalemlerini karşılaştır.
+- [ ] Pilot şehir, işletme ve kurumsal şirket hedeflerini kesinleştir.
 
-- [x] **Görev 1.1**: `types/index.ts` oluşturulması (`User`, `CorporateCompany`, `Merchant`, `MenuItem`, `Campaign`, `Transaction`, `Voucher` şemaları).
-- [x] **Görev 1.2**: `lib/mock-store.ts` in-memory & localStorage mock veri deposunun yazılması.
-- [x] **Görev 1.3**: `app/globals.css` ile Tailwind CSS değişkenlerinin ve TORBAA renk paletinin tanımlanması.
+## Faz 1 — Ürün ve teknik spesifikasyon
 
----
+- [ ] Roller ve yetki matrisi
+- [ ] Mobil ekran PRD'leri
+- [ ] İşletme paneli PRD'leri
+- [ ] Kurumsal panel PRD'leri
+- [ ] Admin paneli PRD'leri
+- [ ] Toin kural motoru
+- [ ] Yemek kartı fiyat ve paket modeli
+- [ ] Komisyon ve hakediş motoru
+- [ ] İade, itiraz ve ters işlem kuralları
+- [ ] KVKK, sözleşme ve veri saklama gereksinimleri
 
-## 🎨 FAZ 2: ORTAK BİLEŞENLER VE TASARIM SİSTEMİ (DESIGN SYSTEM & COMPONENTS)
+## Faz 2 — Veri, ledger ve güvenlik temeli
 
-- [ ] **Görev 2.1**: `TorbaaMealCard` bileşeni (16 haneli çipli dijital yemek kartı widget'ı).
-- [ ] **Görev 2.2**: Mobil Alt Navigasyon Barı (`components/mobile/BottomNav.tsx`).
-- [ ] **Görev 2.3**: İşletme Yan Menüsü (`components/panel/Sidebar.tsx`).
-- [ ] **Görev 2.4**: Ortak Modallar (`GiftCatalogModal`, `SpinWheelModal`, `QuickPosModal`, `ReceiptOcrModal`).
+- [ ] PostgreSQL ve migration altyapısını kur.
+- [ ] Kullanıcı, şirket, işletme, şube, kasiyer ve rol tablolarını oluştur.
+- [ ] Çift taraflı finansal ledger tablolarını oluştur.
+- [ ] Yemek bakiyesi ve Toin hesaplarını ayır.
+- [ ] Idempotency altyapısını oluştur.
+- [ ] Dinamik, imzalı ve süreli QR token yapısını oluştur.
+- [ ] Audit log ve güvenlik olay kayıtlarını oluştur.
+- [ ] Limit ve risk kural motorunun temelini kur.
+- [ ] Test verisi, fixture ve seed sistemi oluştur.
 
----
+**Çıkış kriteri:** Aynı finansal istek iki kez gönderildiğinde tek işlem oluşmalı; iade ters ledger kaydı üretmeli; bütün yönetici aksiyonları loglanmalıdır.
 
-## 📱 FAZ 3: MOBİL UYGULAMA GELİŞTİRMESİ (`/mobile/...`)
+## Faz 3 — Kimlik doğrulama ve yetkilendirme
 
-- [ ] **Görev 3.1**: `/mobile/login` - Telefon numarası ve OTP doğrulama ekranı.
-- [ ] **Görev 3.2**: `/mobile/explore` - Keşfet, arama, restoran kartları, Seviye göstergesi ve Streak card.
-- [ ] **Görev 3.3**: `/mobile/merchant/[id]` - Restoran detay, menü, sepete ekleme ve Toin kazanım hesabı.
-- [ ] **Görev 3.4**: `/mobile/qr` - QR Ödeme terminali (Yemek kartı, Toin harca, Toin kazan modları).
-- [ ] **Görev 3.5**: `/mobile/wallet` - Çift bakiye göstergesi, dijital yemek kartı, hediye çeki pazarı ve P2P transfer.
-- [ ] **Görev 3.6**: `/mobile/profile` - Profil, sadakat seviyeleri ve başarım rozetleri grid'i.
-- [ ] **Görev 3.7**: `/mobile/campaigns` - Aktif kampanya listesi.
+- [ ] Telefon/SMS OTP giriş akışı
+- [ ] Güvenli oturum ve token yenileme
+- [ ] Rol tabanlı erişim kontrolü
+- [ ] Admin ve finans kullanıcıları için iki aşamalı doğrulama
+- [ ] Cihaz, IP ve rate limit kontrolleri
+- [ ] Hesap askıya alma ve oturum iptali
 
----
+## Faz 4 — Sadakat MVP
 
-## 🏪 FAZ 4: İŞLETME / BAYİ PANELİ GELİŞTİRMESİ (`/panel/...`)
+- [ ] Mobil giriş ve profil
+- [ ] Keşfet, kategori, arama ve işletme detayı
+- [ ] Kampanya listesi ve kampanya detayları
+- [ ] İşletme başvurusu ve admin onayı
+- [ ] İşletme/şube/kasiyer yönetimi
+- [ ] QR ile Toin kazanma
+- [ ] Toin harcama
+- [ ] Kampanya bütçesi ve limit kontrolü
+- [ ] İade halinde Toin geri alma
+- [ ] İşletme ve admin raporları
 
-- [ ] **Görev 4.1**: `/panel/login` - Bayi giriş ekranı.
-- [ ] **Görev 4.2**: `/panel/dashboard` - Ciro, hakediş alacağı summary ve Kasiyer POS QR Tahsilat Modalı.
-- [ ] **Görev 4.3**: `/panel/balance` - Hakediş takvimi, banka hesabı çekim geçmişi ve B2B Tedarik Mağazası.
-- [ ] **Görev 4.4**: `/panel/transactions` - Günlük/aylık tahsilat listesi ve filtreleme.
-- [ ] **Görev 4.5**: `/panel/campaigns` - Fırsat/Kampanya oluşturma ekranı.
+**MVP dışı:** P2P transfer, şans çarkı, OCR, hediye çeki ve tedarik pazaryeri.
 
----
+## Faz 5 — Admin ve operasyon merkezi
 
-## 🏢 FAZ 5: KURUMSAL İK PORTALI GELİŞTİRMESİ (`/corporate/...`)
+- [ ] Admin dashboard
+- [ ] Kullanıcı, işletme, şirket ve şube yönetimi
+- [ ] Belge ve başvuru onayı
+- [ ] Kampanya onayı ve Toin kural yönetimi
+- [ ] İşlem, iade ve itiraz yönetimi
+- [ ] Riskli işlem kuyruğu
+- [ ] Destek talepleri
+- [ ] Audit log görüntüleme
+- [ ] Sistem parametreleri ve özellik bayrakları
 
-- [ ] **Görev 5.1**: `/corporate/dashboard` - Kurumsal şirket paneli, çalışan yemek bakiyesi toplu yükleme ve GVK 23/8 Vergi Muafiyet Hesaplama Raporu.
+## Faz 6 — Kurumsal ve yemek kartı pilotu
 
----
+- [ ] Kurumsal şirket başvurusu ve sözleşme akışı
+- [ ] Çalışan ekleme ve Excel aktarımı
+- [ ] Departman ve maliyet merkezi
+- [ ] Bakiye yükleme talebi ve çift onay
+- [ ] Ödeme ortağı sandbox entegrasyonu
+- [ ] Yemek işletmesi kategori kontrolü
+- [ ] Yemek kartı QR ödeme
+- [ ] Tam ve kısmi iade
+- [ ] Komisyon hesaplama
+- [ ] Bekleyen/ödenebilir hakediş
+- [ ] Mutabakat ve ödeme sonucu işleme
+- [ ] Kurumsal ve işletme raporları
 
-## ⚡ FAZ 6: REST API ENDPOINT'LERİ (`/api/...`)
+**Çıkış kriteri:** Pilot işlemler baştan sona ödeme ortağı sandbox ortamında mutabık olmalıdır.
 
-- [ ] **Görev 6.1**: `/api/auth/otp/verify` - OTP doğrulama mock endpoint'i.
-- [ ] **Görev 6.2**: `/api/merchants/nearby` - İşletme arama ve listeleme API'si.
-- [ ] **Görev 6.3**: `/api/qr/meal-pay` - TORBAA Yemek Kartı harcama ve +%5 Toin tanımlama API'si.
-- [ ] **Görev 6.4**: `/api/corporate/allowance` - Şirket çalışan bakiye yükleme API'si.
+## Faz 7 — Fiyat ve hakediş avantajı
 
----
+- [ ] Toplam maliyet hesaplayıcısı
+- [ ] Standart, hızlı ve sabit paketler
+- [ ] Fiyat koruma başvuru akışı
+- [ ] Rakip teklif karşılaştırma ekranı
+- [ ] Hakediş takvimi
+- [ ] Kesinti ve net ödeme şeffaflığı
+- [ ] Zincir işletme özel fiyatlandırması
 
-## ✅ FAZ 7: TEST VE DOĞRULAMA (VERIFICATION)
+## Faz 8 — Test, güvenlik ve pilot
 
-- [ ] **Görev 7.1**: `npm run build` ile TypeScript ve Next.js derleme kontrolü.
-- [ ] **Görev 7.2**: Tüm modallar ve cüzdan bakiyelerinin senkronizasyon testi.
+- [ ] Unit ve entegrasyon testleri
+- [ ] Finansal invariants testleri
+- [ ] Playwright uçtan uca testleri
+- [ ] Yük ve eşzamanlılık testleri
+- [ ] Sızma testi
+- [ ] Yedekleme ve geri dönüş testi
+- [ ] Operasyon runbook'ları
+- [ ] Balıkesir pilot işletme ve şirket onboarding'i
+- [ ] Pilot KPI ve finansal sonuç değerlendirmesi
+
+## Faz 9 — Büyüme modülleri
+
+- [ ] Tedarik pazaryeri
+- [ ] ERP/bordro entegrasyonları
+- [ ] Android POS uygulaması
+- [ ] Gelişmiş kişiselleştirme
+- [ ] Hediye çeki pazarı
+- [ ] Kontrollü oyunlaştırma
+- [ ] Yeni şehirler ve zincir işletmeler
+
+## Codex çalışma kuralı
+
+Her görev ayrı branch ve PR olarak geliştirilmelidir. Bir PR yalnızca tek iş alanını kapsamalı; build, lint ve ilgili testler çalışmadan bir sonraki göreve geçilmemelidir. Finansal kurallar için mock davranış ile production davranışı açıkça ayrılmalıdır.
