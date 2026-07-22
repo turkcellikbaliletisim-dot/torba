@@ -1,99 +1,101 @@
-# TORBAA — B2B2C Sadakat, Keşif, Bayi ve Özgün "TORBAA YEMEK KARTI" Ekosistemi
+# TORBAA — Sadakat, Keşif, Yerel Ticaret ve Yemek Kartı Ekosistemi
 
-![TORBAA Platform](https://img.shields.io/badge/Platform-TORBAA-00C853?style=for-the-badge&logo=nextdotjs)
-![Tech Stack](https://img.shields.io/badge/Stack-Next.js_14_|--TypeScript_|--TailwindCSS-007ACC?style=for-the-badge)
-![Status](https://img.shields.io/badge/Status-Active_Development-orange?style=for-the-badge)
+![TORBAA Platform](https://img.shields.io/badge/Platform-TORBAA-00C853?style=for-the-badge)
+![Tech Stack](https://img.shields.io/badge/Stack-Next.js_14_|_TypeScript_|_TailwindCSS-007ACC?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Product_Foundation-orange?style=for-the-badge)
 
----
+## Proje hakkında
 
-## 📌 Proje Hakkında
+**TORBAA**, kullanıcıları çevresindeki işletmeler, kampanyalar ve avantajlarla buluşturan; işletmelerin müşterilerini tekrar kazanmasını, satışlarını artırmasını ve kendi dijital sadakat programlarını yönetmesini sağlayan B2B2C yerel ticaret platformudur.
 
-**TORBAA**; üçüncü parti yemek kartı ihraççısı kurumların yüksek komisyon (%10-%12) ve uzun vadeli hakediş yüklerini ortadan kaldırarak **kendi bünyesinde yerli ve özgün "TORBAA YEMEK KARTI" markasını ihraç eden** uçtan uca bir B2B2C sadakat, keşif, e-ticaret ve kurumsal yan haklar platformudur.
+Platformun ana omurgası:
 
-### 🌟 Öne Çıkan Değer Önergeleri
-1. **Özgün Yemek Kartı İhraççısı (Proprietary Meal Card Issuer)**: TORBAA kendi dijital çipli 16 haneli **TORBAA Yemek Kartı**'nı çıkarır. GVK 23/8 vergi muafiyeti ile %100 uyumludur.
-2. **Düşük Komisyon & Hızlı Hakediş (%3-%5)**: Üye restoranlardan rakiplere göre çok daha düşük komisyon alır ve ödemeleri 7 gün içinde işletme hesabına yatırır.
-3. **Çift Bakiye Cüzdanı (Dual Wallet)**:
-   - 💳 **TORBAA Yemek Kartı Bakiyesi**: Şirket tarafından yüklenen vergi istisnalı net yemek bütçesi.
-   - 🪙 **Toin Sadakat Bakiyesi**: Tüm ekosistemde indirim veya hediye çeki olarak kullanılan nakit değerli puan (`1 Toin = 1 TL`).
-4. **Çifte Kazanım (Cashback on Meal Spend)**: Çalışanlar TORBAA Yemek Kartı ile yemek ödemesi yaptıklarında harcadıkları tutarın üzerinden ekstra **%5 Toin** kazanmaya devam eder.
+- yerel işletme keşfi,
+- kampanya ve sadakat yönetimi,
+- Toin ödül sistemi,
+- QR tabanlı işlem doğrulama,
+- işletme büyüme araçları,
+- kurumsal yan haklar,
+- TORBAA Yemek Kartı,
+- ilerleyen fazlarda işletmelere yönelik tedarik pazaryeridir.
 
----
+**TORBAA Yemek Kartı platformun tamamı değil, güçlü ana ürünlerinden biridir.** Kurumsal şirketler çalışanlarına yemek bakiyesi yükleyebilir; çalışanlar bu bakiyeyi anlaşmalı yemek işletmelerinde kullanabilir. TORBAA'nın yemek kartı iddiası, yalnızca düşük komisyon değil, **en düşük toplam maliyet, gizli ücret olmaması, cihaz zorunluluğu bulunmaması ve şeffaf hakediş** üzerine kurulacaktır.
 
-## 🏗️ Portal ve Uygulama Mimarisi
+## Ürün ailesi
 
-TORBAA ekosistemi tek bir Next.js 14 projesi altında 3 ana istemci ve portalı barındırır:
+| Ürün | Hedef kitle | Temel değer |
+|---|---|---|
+| **TORBAA Keşfet** | Tüketiciler | Yakındaki işletmeleri, kampanyaları ve fırsatları keşfetme |
+| **TORBAA Toin** | Tüketiciler ve işletmeler | Harcamayı tekrar ziyarete dönüştüren sadakat altyapısı |
+| **TORBAA Yemek Kartı** | Şirketler, çalışanlar ve restoranlar | Şeffaf, düşük toplam maliyetli kurumsal yemek çözümü |
+| **TORBAA İşletme** | Yerel esnaf ve zincir işletmeler | Kampanya, müşteri, şube, kasiyer, işlem ve hakediş yönetimi |
+| **TORBAA Kurumsal** | Şirketler ve İK ekipleri | Çalışan, bütçe, yükleme, onay ve raporlama yönetimi |
+| **TORBAA Admin** | TORBAA operasyon ekibi | Platform, finans, risk, destek ve içerik yönetimi |
+| **TORBAA Tedarik** | İşletmeler | Sarf malzemesi ve toptan tedarik pazaryeri |
 
-| Portal | Rota | Hedef Kitle | Temel İşlevler |
-| :--- | :--- | :--- | :--- |
-| **Mobil Uygulama** | `/mobile/...` | B2C Tüketici / Şirket Çalışanı | Keşfet, QR Ödeme, TORBAA Yemek Kartı Cüzdanı, Fiş OCR, Şans Çarkı, P2P Transfer |
-| **İşletme / Bayi Paneli** | `/panel/...` | Anlaşmalı Restoran & Mağaza | Hızlı POS Kasiyer QR Tahsilatı, Haftalık Hakediş Takibi, B2B Toptan Tedarik Mağazası |
-| **Kurumsal İK Portalı** | `/corporate/...` | Şirket İK Yöneticileri | Toplu Yemek Bakiyesi Yükleme, GVK 23/8 Vergi Muafiyet Raporu, Çalışan Prim Modülü |
+## Temel ilkeler
 
----
+1. **Sadakat önce gelir:** TORBAA'nın ana işi müşteriyi işletmeye geri getirmektir.
+2. **Yemek kartı ekosisteme trafik sağlar:** Kurumsal kullanım, TORBAA işletme ağını ve kullanıcı sıklığını büyütür.
+3. **Toin ayrı bir sadakat varlığıdır:** Yemek bakiyesi ile aynı cüzdanda görünse de finansal olarak ayrı hesaplarda tutulur.
+4. **Gizli ücret yoktur:** İşletme, işlemden önce komisyonu, kesintiyi, net hakedişi ve ödeme tarihini görür.
+5. **Finansal hareketler silinmez:** İptal ve iadeler ters kayıtla işlenir.
+6. **Mevzuat iddiaları doğrulanmadan kesinleştirilmez:** Vergi, ödeme ve lisans kapsamları hukuk ve finans uzmanı onayına tabidir.
 
-## 📂 Proje Dizin Yapısı
+## Portal mimarisi
 
-```bash
-flow/
-├── app/                      # Next.js 14 App Router Sayfaları ve API Rotaları
-│   ├── (landing)/            # Ana Karşılama Portalı (/)
-│   ├── mobile/               # Mobil B2C / Şirket Çalışanı Uygulaması
-│   ├── panel/                # İşletme / Bayi Yönetim Paneli
-│   ├── corporate/            # Kurumsal Şirket İK Yönetim Portalı
-│   ├── api/                  # Mock/Real REST API Endpoint'leri
-│   └── globals.css           # Tasarım Sistemi & Tailwind Temel Stilleri
-├── lib/                      # Mock Data Store, Helpers & Utility Servisleri
-├── types/                    # TypeScript Veri Modelleri & Şemaları
-├── references/               # Orijinal Şartnameler ve Sunum PDF'leri
-├── TORBAA_MASTER_DOKUMAN.md  # Ana Proje Spesifikasyonu ve İş Kuralları
-├── OPEN_QUESTIONS.md         # Açık Kararlar ve Teknik/Hukuki Belirsizlikler
-├── DEVELOPMENT_ROADMAP.md    # Codex / AI Geliştirme Görev Sıralaması
-├── package.json
+| Portal | Rota | Hedef kitle |
+|---|---|---|
+| Mobil uygulama | `/mobile/...` | Tüketici ve şirket çalışanı |
+| İşletme paneli | `/panel/...` | İşletme sahibi, şube yöneticisi, kasiyer |
+| Kurumsal panel | `/corporate/...` | Şirket yöneticisi, İK ve finans ekipleri |
+| Admin panel | `/admin/...` | TORBAA operasyon, finans, risk ve destek ekipleri |
+
+## Repo yapısı
+
+```text
+torba/
+├── app/                       # Next.js App Router
+│   ├── mobile/
+│   ├── panel/
+│   ├── corporate/
+│   ├── admin/
+│   └── api/
+├── components/
+├── lib/
+├── types/
+├── docs/                      # Ürün ve teknik karar belgeleri
+├── references/                # Eski dokümanlar ve sunumlar
+├── TORBAA_MASTER_DOKUMAN.md
+├── OPEN_QUESTIONS.md
+├── DEVELOPMENT_ROADMAP.md
 └── README.md
 ```
 
----
+## Hızlı başlangıç
 
-## 🚀 Hızlı Başlangıç
-
-### Gereksinimler
-- Node.js `>= 18.0.0`
-- npm `>= 9.0.0`
-
-### Kurulum
-
-1. Depoyu klonlayın veya dizine gidin:
 ```bash
-cd /Users/ikbal/Desktop/flow
-```
-
-2. Bağımlılıkları yükleyin:
-```bash
+git clone https://github.com/turkcellikbaliletisim-dot/torba.git
+cd torba
 npm install
-```
-
-3. Geliştirme sunucusunu başlatın:
-```bash
 npm run dev
 ```
 
-4. Tarayıcınızda açın:
-- **Karşılama Sayfası**: `http://localhost:3000`
-- **Mobil Uygulama**: `http://localhost:3000/mobile/explore`
-- **İşletme Paneli**: `http://localhost:3000/panel/dashboard`
-- **Kurumsal İK Portalı**: `http://localhost:3000/corporate/dashboard`
+## Dokümantasyon
 
----
+- [Master proje dokümanı](./TORBAA_MASTER_DOKUMAN.md)
+- [Geliştirme yol haritası](./DEVELOPMENT_ROADMAP.md)
+- [Açık kararlar](./OPEN_QUESTIONS.md)
+- [Ana iş modeli](./docs/01_TORBAA_ANA_IS_MODELI.md)
+- [Toin ekonomisi](./docs/02_TOIN_EKONOMISI.md)
+- [Yemek kartı fiyat stratejisi](./docs/03_YEMEK_KARTI_FIYAT_STRATEJISI.md)
+- [Komisyon ve hakediş](./docs/04_KOMISYON_VE_HAKEDIS.md)
+- [Finansal ledger mimarisi](./docs/05_FINANSAL_LEDGER.md)
 
-## 📝 Dokümantasyon Belgeleri
+## Durum
 
-- 📄 [TORBAA_MASTER_DOKUMAN.md](file:///Users/ikbal/Desktop/flow/TORBAA_MASTER_DOKUMAN.md): Tam iş kuralları, çift bakiye mantığı, vergi istisnası ve veri modelleri.
-- ❓ [OPEN_QUESTIONS.md](file:///Users/ikbal/Desktop/flow/OPEN_QUESTIONS.md): Hukuki, finansal ve teknik açık noktalar.
-- 🗺️ [DEVELOPMENT_ROADMAP.md](file:///Users/ikbal/Desktop/flow/DEVELOPMENT_ROADMAP.md): Adım adım geliştirme ve AI görev haritası.
+Bu repo şu anda ürün temeli ve kontrollü prototip aşamasındadır. Gerçek para, hakediş veya yemek kartı işlemleri; lisanslı iş ortağı, mevzuat değerlendirmesi, güvenlik testleri ve çift taraflı finansal defter tamamlanmadan canlıya alınmayacaktır.
 
----
+## Lisans
 
-## 📜 Lisans
-
-Tüm hakları **TORBAA Teknolojileri A.Ş.**'ye aittir. İzinsiz kopyalanamaz veya dağıtılamaz.
+Tüm hakları saklıdır. Şirket ve marka unvanı kesinleştiğinde lisans metni güncellenecektir.
