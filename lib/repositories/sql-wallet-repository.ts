@@ -12,7 +12,6 @@ interface WalletRow {
   wallet_type: WalletType;
   currency: string;
   status: string;
-  balance_minor: string | number | bigint;
 }
 
 function mapWallet(row: WalletRow): WalletRecord {
@@ -23,18 +22,17 @@ function mapWallet(row: WalletRow): WalletRecord {
     walletType: row.wallet_type,
     currency: row.currency,
     status: row.status,
-    balanceMinor: BigInt(row.balance_minor),
   };
 }
+
+const walletColumns = 'id, owner_type, owner_id, wallet_type, currency, status';
 
 export class SqlWalletRepository implements WalletRepository {
   constructor(private readonly client: SqlClient) {}
 
   async findById(id: string): Promise<WalletRecord | null> {
     const result = await this.client.query<WalletRow>(
-      `SELECT id, owner_type, owner_id, wallet_type, currency, status, balance_minor
-       FROM wallets
-       WHERE id = $1`,
+      `SELECT ${walletColumns} FROM wallets WHERE id = $1`,
       [id],
     );
 
@@ -44,24 +42,24 @@ export class SqlWalletRepository implements WalletRepository {
   async findByOwner(
     ownerType: string,
     ownerId: string,
-    walletType: WalletType,
-  ): Promise<WalletRecord | null> {
-    const result = await this.client.query<WalletRow>(
-      `SELECT id, owner_type, owner_id, wallet_type, currency, status, balance_minor
-       FROM wallets
-       WHERE owner_type = $1 AND owner_id = $2 AND wallet_type = $3`,
-      [ownerType, ownerId, walletType],
-    );
+    walletType?: WalletType,
+  ): Promise<WalletRecord[]> {
+    const values: unknown[] = [ownerType, ownerId];
+    let sql = `SELECT ${walletColumns} FROM wallets WHERE owner_type = $1 AND owner_id = $2`;
 
-    return result.rows[0] ? mapWallet(result.rows[0]) : null;
+    if (walletType) {
+      values.push(walletType);
+      sql += ' AND wallet_type = $3';
+    }
+
+    sql += ' ORDER BY wallet_type, currency';
+    const result = await this.client.query<WalletRow>(sql, values);
+    return result.rows.map(mapWallet);
   }
 
   async lockById(id: string): Promise<WalletRecord | null> {
     const result = await this.client.query<WalletRow>(
-      `SELECT id, owner_type, owner_id, wallet_type, currency, status, balance_minor
-       FROM wallets
-       WHERE id = $1
-       FOR UPDATE`,
+      `SELECT ${walletColumns} FROM wallets WHERE id = $1 FOR UPDATE`,
       [id],
     );
 
