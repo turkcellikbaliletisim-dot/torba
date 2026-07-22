@@ -83,18 +83,19 @@ npm run dev
 
 ## Dokümantasyon
 
+- [Doküman indeksi](./docs/00_DOKUMAN_INDEKSI.md)
 - [Master proje dokümanı](./TORBAA_MASTER_DOKUMAN.md)
 - [Geliştirme yol haritası](./DEVELOPMENT_ROADMAP.md)
 - [Açık kararlar](./OPEN_QUESTIONS.md)
-- [Ana iş modeli](./docs/01_TORBAA_ANA_IS_MODELI.md)
-- [Toin ekonomisi](./docs/02_TOIN_EKONOMISI.md)
-- [Yemek kartı fiyat stratejisi](./docs/03_YEMEK_KARTI_FIYAT_STRATEJISI.md)
-- [Komisyon ve hakediş](./docs/04_KOMISYON_VE_HAKEDIS.md)
-- [Finansal ledger mimarisi](./docs/05_FINANSAL_LEDGER.md)
+- [Terimler sözlüğü](./docs/25_TERIMLER_SOZLUGU.md)
+- [Karar kayıtları](./docs/26_KARAR_KAYITLARI.md)
+- [Temel kabul kontrol listesi](./docs/27_TEMEL_KABUL_KONTROL_LISTESI.md)
+
+Tüm alan belgeleri ve önerilen okuma sırası için doküman indeksini kullanın. `references/` altındaki belgeler tarihsel kaynaktır; güncel geliştirme gereksinimi olarak kullanılmamalıdır.
 
 ## Durum
 
-Bu repo şu anda ürün temeli ve kontrollü prototip aşamasındadır. Gerçek para, hakediş veya yemek kartı işlemleri; lisanslı iş ortağı, mevzuat değerlendirmesi, güvenlik testleri ve çift taraflı finansal defter tamamlanmadan canlıya alınmayacaktır.
+Ürün ve teknik temel dokümantasyonu tamamlanmıştır. Sıradaki geliştirme fazı PostgreSQL migration altyapısı, kimlik/yetkilendirme ve çift taraflı ledger çekirdeğidir. Gerçek para, hakediş veya yemek kartı işlemleri; lisanslı iş ortağı, mevzuat değerlendirmesi, güvenlik testleri ve mutabakat altyapısı tamamlanmadan canlıya alınmayacaktır.
 
 ## Lisans
 
