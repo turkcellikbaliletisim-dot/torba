@@ -1,4 +1,7 @@
+import type { LedgerEntryInput } from '@/lib/domain/ledger';
+
 export type EntityId = string;
+export type WalletType = string;
 
 export interface PaginationInput {
   limit: number;
@@ -14,7 +17,7 @@ export interface WalletRecord {
   id: EntityId;
   ownerType: string;
   ownerId: EntityId;
-  walletType: string;
+  walletType: WalletType;
   currency: string;
   status: string;
 }
@@ -37,15 +40,30 @@ export interface LedgerEntryRecord {
   amountMinor: bigint;
 }
 
+export interface LedgerTransactionInput {
+  transactionType: string;
+  externalReference?: string;
+  idempotencyKey: string;
+  occurredAt?: Date;
+  reversedTransactionId?: EntityId;
+  entries: LedgerEntryInput[];
+}
+
 export interface WalletRepository {
   findById(id: EntityId): Promise<WalletRecord | null>;
-  findByOwner(ownerType: string, ownerId: EntityId): Promise<WalletRecord[]>;
+  findByOwner(
+    ownerType: string,
+    ownerId: EntityId,
+    walletType?: WalletType,
+  ): Promise<WalletRecord[]>;
+  lockById(id: EntityId): Promise<WalletRecord | null>;
 }
 
 export interface LedgerRepository {
   findTransactionById(id: EntityId): Promise<LedgerTransactionRecord | null>;
   findTransactionByIdempotencyKey(key: string): Promise<LedgerTransactionRecord | null>;
   listEntries(transactionId: EntityId): Promise<LedgerEntryRecord[]>;
+  create(input: LedgerTransactionInput): Promise<LedgerTransactionRecord>;
 }
 
 export interface AuditLogInput {
