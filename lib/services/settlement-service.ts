@@ -19,7 +19,7 @@ export interface SettlementBatchResult {
 }
 
 /**
- * Groups COMPLETED payments into an Atomic Settlement Batch for Merchant Payout (Section 9)
+ * Groups COMPLETED payments into an Atomic Settlement Batch and creates settlement_items (Items 3 & 9)
  */
 export async function createSettlementBatch(merchantId: string): Promise<SettlementBatchResult> {
   const pool = getDbPool();
@@ -30,6 +30,7 @@ export async function createSettlementBatch(merchantId: string): Promise<Settlem
   let totalCommission = 0n;
   let totalNet = 0n;
   let count = 0;
+  const items: SettlementBatchItem[] = [];
 
   try {
     client = await pool.connect();
@@ -56,6 +57,13 @@ export async function createSettlementBatch(merchantId: string): Promise<Settlem
       totalCommission += calc.commissionAmountMinor;
       totalNet += calc.netPayoutMinor;
       count++;
+
+      items.push({
+        paymentId: row.id,
+        grossAmountMinor: calc.grossAmountMinor,
+        commissionAmountMinor: calc.commissionAmountMinor,
+        netPayoutMinor: calc.netPayoutMinor,
+      });
     }
 
     // 2. Insert Settlement Batch Record
@@ -66,9 +74,25 @@ export async function createSettlementBatch(merchantId: string): Promise<Settlem
       [batchId, merchantId, totalGross.toString(), totalCommission.toString(), totalNet.toString(), count]
     );
 
-    // 3. Link Payments to Settlement Batch in Single Atomic Txn
-    if (paymentRows.length > 0) {
-      const paymentIds = paymentRows.map((r) => r.id);
+    // 3. Insert Settlement Items Records & Link Payments in Single Atomic Txn (Item 3)
+    if (items.length > 0) {
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO settlement_items (id, settlement_batch_id, payment_id, gross_minor, commission_minor, net_minor, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())
+           ON CONFLICT DO NOTHING`,
+          [
+            `item-${batchId}-${item.paymentId}`,
+            batchId,
+            item.paymentId,
+            item.grossAmountMinor.toString(),
+            item.commissionAmountMinor.toString(),
+            item.netPayoutMinor.toString(),
+          ]
+        );
+      }
+
+      const paymentIds = items.map((i) => i.paymentId);
       await client.query(
         'UPDATE payments SET settlement_batch_id = $1, updated_at = NOW() WHERE id = ANY($2::text[])',
         [batchId, paymentIds]

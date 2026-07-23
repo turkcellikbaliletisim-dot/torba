@@ -62,7 +62,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
   let platformWalletId = 'w-platform-fees';
   const refundId = `ref-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-  // 2. First Short DB Txn: Row Lock Payment, Verify Provider Payment ID, Dynamic Wallets & Reserve Refund Amount (Item 3 & 4)
+  // 2. First Short DB Txn: Row Lock Payment, Strict Provider Payment ID Check, Dynamic Wallets & Reserve Refund Amount (Items 1 & 2)
   client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -80,8 +80,14 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
 
     dbPayment = paymentRes.rows[0];
 
-    // Require Provider Payment ID (Fail-Closed - Item 4)
-    const targetProviderPaymentId = dbPayment.provider_payment_id || dbPayment.id;
+    // Strict Provider Payment ID Requirement (Fail-Closed - Section 3 Item 1)
+    if (!dbPayment.provider_payment_id) {
+      await client.query('ROLLBACK');
+      client.release();
+      return { success: false, errorCode: 'MISSING_PROVIDER_ID', errorMessage: 'Ödeme kuruluşu provider_payment_id kaydı bulunamadı. İade başlatılamaz.' };
+    }
+
+    const targetProviderPaymentId = dbPayment.provider_payment_id;
 
     // Merchant Ownership Check (Item 4.11)
     if (params.requestedByUserRole === 'MERCHANT' && params.requestedByMerchantId && params.requestedByMerchantId !== dbPayment.merchant_id) {
@@ -103,7 +109,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
     userWalletId = userWalletRes.rows.length > 0 ? userWalletRes.rows[0].id : `w-user-${dbPayment.user_id}`;
     merchantWalletId = merchantWalletRes.rows.length > 0 ? merchantWalletRes.rows[0].id : `w-merchant-${dbPayment.merchant_id}`;
 
-    // Cumulative Partial Refund Fail-Closed Total Check Including RESERVED Status (Section 3 Concurrency Guard)
+    // Cumulative Partial Refund Fail-Closed Total Check Including RESERVED & PROVIDER_PENDING Statuses
     const refundSumRes = await client.query(
       "SELECT COALESCE(SUM(amount_minor), 0) AS total_refunded FROM refunds WHERE payment_id = $1 AND status IN ('COMPLETED', 'RESERVED', 'PROVIDER_PENDING')",
       [params.paymentId]
@@ -124,7 +130,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
       };
     }
 
-    // 4-Eye Approval Check
+    // 4-Eye Approval Check (with Reservation Lock EVEN WHEN Approval is Pending - Item 2)
     if (!params.bypassApprovalCheck) {
       const dualAppr = await requestDualApproval({
         actionType: 'HIGH_VALUE_REFUND',
@@ -134,12 +140,20 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
       });
 
       if (dualAppr.requiresSecondApproval) {
+        // Reserve the refund amount in DB even while waiting for 2nd admin approval!
+        await client.query(
+          `INSERT INTO refunds (id, payment_id, amount_minor, reason, status, created_at)
+           VALUES ($1, $2, $3, $4, 'RESERVED', NOW())
+           ON CONFLICT (id) DO NOTHING`,
+          [refundId, params.paymentId, params.refundAmountMinor.toString(), '4-Eye Onay Bekleyen İade Rezervasyonu']
+        );
+
         await client.query('COMMIT');
         client.release();
 
         const pendingApprResponse = {
           success: true,
-          message: 'Yüksek tutarlı iade talebi oluşturuldu. İşlemin tamamlanması için 2. bir yöneticinin onayı gerekmektedir (Çift Onay Prensibi).',
+          message: 'Yüksek tutarlı iade talebi oluşturuldu. Bakiye kilitlendi ve 2. bir yöneticinin onayı beklenmektedir (Çift Onay Prensibi).',
           data: { approvalId: dualAppr.approvalRecord.id, status: 'PENDING_SECOND_APPROVAL' },
         };
         await saveIdempotentResult(`refund:${ikKey}`, rawPayload, 'COMPLETED', 202, pendingApprResponse);
@@ -152,7 +166,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
       }
     }
 
-    // Insert RESERVED Refund Status to Prevent Over-Refunding Across Parallel Requests (Section 3 Concurrency Guard)
+    // Insert RESERVED Refund Status to Prevent Over-Refunding Across Parallel Requests
     await client.query(
       `INSERT INTO refunds (id, payment_id, amount_minor, reason, status, created_at)
        VALUES ($1, $2, $3, $4, 'RESERVED', NOW())
@@ -173,10 +187,9 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
     if (client) client.release();
   }
 
-  // 3. Outbound Payment Provider Refund Call with provider_payment_id (Saga Pattern - Item 4)
-  const targetProviderId = dbPayment.provider_payment_id || dbPayment.id;
+  // 3. Outbound Payment Provider Refund Call with STRICT provider_payment_id (Item 1)
   const providerRes = await defaultPaymentProvider.processRefund({
-    providerPaymentId: targetProviderId,
+    providerPaymentId: dbPayment.provider_payment_id,
     refundAmountMinor: params.refundAmountMinor,
     currency: 'TRY',
     reason: params.reason || 'Müşteri talebi iadesi',
@@ -209,7 +222,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
     // Update Payment Status
     await client.query('UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2', [newPaymentStatus, dbPayment.id]);
 
-    // Commission Snapshot Proportional Reversal Calculation (Section 7)
+    // Commission Snapshot Proportional Reversal Calculation
     const basisPoints = BigInt(dbPayment.commission_basis_points || 300);
     const commissionReversal = (params.refundAmountMinor * basisPoints) / 10000n;
     const merchantDebit = params.refundAmountMinor - commissionReversal;
@@ -253,7 +266,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
         action: 'PAYMENT_REFUND_PROCESSED_UNIFIED',
         resourceType: 'REFUND',
         resourceId: refundId,
-        metadata: { paymentId: params.paymentId, providerPaymentId: targetProviderId, refundAmountMinor: params.refundAmountMinor.toString(), isFullRefund },
+        metadata: { paymentId: params.paymentId, providerPaymentId: dbPayment.provider_payment_id, refundAmountMinor: params.refundAmountMinor.toString(), isFullRefund },
       },
       client
     );

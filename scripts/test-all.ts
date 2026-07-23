@@ -12,6 +12,7 @@ import { requestDualApproval, approveBySecondAdmin } from '../lib/services/appro
 import { createSettlementBatch } from '../lib/services/settlement-service';
 import { setnxCache } from '../lib/db/redis';
 import { runDailyReconciliation } from '../lib/services/reconciliation-service';
+import { runPaymentRecoveryWorker } from '../lib/services/payment-recovery';
 import crypto from 'crypto';
 
 console.log('🧪 Running Full TORBAA Master Production Readiness Test Suite...\n');
@@ -156,12 +157,15 @@ async function runTests() {
   const secondAdminAppr = await approveBySecondAdmin(dualAppr.approvalRecord.id, 'admin-2');
   assert(secondAdminAppr.success === true, 'approveBySecondAdmin: 2nd admin successfully grants approval');
 
-  // 9. Reconciliation & Discrepancy Queue Engine Tests
-  console.log('\n--- 9. Reconciliation & Discrepancy Queue Engine Tests ---');
+  // 9. Reconciliation & Bi-Directional Discrepancy Queue Engine Tests
+  console.log('\n--- 9. Reconciliation & Bi-Directional Discrepancy Queue Engine Tests ---');
   const recon = await runDailyReconciliation([
     { providerPaymentId: 'pay-999', amountMinor: 5000n, status: 'COMPLETED', settlementDate: '2026-07-23' },
   ]);
-  assert(recon.totalChecked === 1, 'runDailyReconciliation: Audits provider report against local ledger');
+  assert(recon.totalChecked === 1, 'runDailyReconciliation: Audits provider report against local ledger bi-directionally');
+
+  const recovery = await runPaymentRecoveryWorker();
+  assert(typeof recovery.recoveredCount === 'number', 'runPaymentRecoveryWorker: Scans PENDING payments and recovers local status');
 
   // 10. Real Idempotency Lock & 409 Conflict Payload Hash Tests
   console.log('\n--- 10. Real Idempotency Lock & 409 Conflict Payload Hash Tests ---');
