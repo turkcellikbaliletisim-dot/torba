@@ -16,6 +16,9 @@ import { runPaymentRecoveryWorker, runRefundRecoveryWorker } from '../lib/servic
 import { validateTurkishIban, executeBankPayout } from '../lib/services/payout-service';
 import { maskPhone, maskSensitiveValue } from '../lib/services/logger-service';
 import { runFinancialDailyClosing } from '../lib/services/daily-closing-service';
+import { canTransitionPaymentStatus } from '../lib/services/payment-state-machine';
+import { createRefundSaga, runRefundSagaWorker } from '../lib/services/refund-saga';
+import { runLedgerIntegrityAudit } from '../lib/services/ledger-integrity-service';
 import crypto from 'crypto';
 
 console.log('🧪 Running Full TORBAA Master Production Readiness Test Suite...\n');
@@ -48,8 +51,8 @@ async function runTests() {
   const commission = calculateBasisPoints(money(10000n), 300);
   assert(commission.amountMinor === 300n, 'calculateBasisPoints: 3% of 10000 = 300 minor units');
 
-  // 2. Double-Entry Ledger Tests
-  console.log('\n--- 2. Double-Entry Ledger Tests ---');
+  // 2. Double-Entry Ledger & Integrity Invariants Tests
+  console.log('\n--- 2. Double-Entry Ledger & Integrity Invariants Tests ---');
   const entries = [
     { walletId: 'w-user', direction: 'DEBIT' as const, amountMinor: 1000n },
     { walletId: 'w-merchant', direction: 'CREDIT' as const, amountMinor: 970n },
@@ -69,6 +72,9 @@ async function runTests() {
     reversed[0].direction === 'CREDIT' && reversed[1].direction === 'DEBIT' && reversed[2].direction === 'DEBIT',
     'reverseEntries: Flips DEBIT -> CREDIT and CREDIT -> DEBIT for full commission reversal'
   );
+
+  const ledgerAudit = await runLedgerIntegrityAudit();
+  assert(ledgerAudit.isBalanced === true, 'runLedgerIntegrityAudit: Enforces DEBIT = CREDIT invariant across all transactions');
 
   // 3. Cryptographic QR Token Tests
   console.log('\n--- 3. Cryptographic QR Token Tests ---');
@@ -135,8 +141,14 @@ async function runTests() {
   assert(hasPermission('CUSTOMER', 'refund.approve') === false, 'hasPermission: Customer does not have refund.approve permission');
   assert(hasPermission('MERCHANT', 'refund.create') === true, 'hasPermission: Merchant has refund.create permission');
 
-  // 7. Payment Provider Adapter & Settlement Batch Calculation Tests
-  console.log('\n--- 7. Payment Provider Adapter & Settlement Batch Calculation Tests ---');
+  // 7. Payment Provider Adapter, State Machine & Settlement Batch Calculation Tests
+  console.log('\n--- 7. Payment Provider Adapter, State Machine & Settlement Batch Calculation Tests ---');
+  const validTransition = canTransitionPaymentStatus('PENDING_PROVIDER', 'COMPLETED');
+  assert(validTransition === true, 'canTransitionPaymentStatus: PENDING_PROVIDER -> COMPLETED allowed');
+
+  const invalidTransition = canTransitionPaymentStatus('REFUNDED', 'COMPLETED');
+  assert(invalidTransition === false, 'canTransitionPaymentStatus: Terminal state REFUNDED -> COMPLETED rejected');
+
   const settlement = defaultPaymentProvider.calculateSettlement(10000n, 300); // ₺100,00 - %3 = ₺97,00 net
   assert(settlement.commissionAmountMinor === 300n, 'calculateSettlement: 3% commission on ₺100 = ₺3,00');
   assert(settlement.netPayoutMinor === 9700n, 'calculateSettlement: Net merchant payout = ₺97,00');
@@ -185,14 +197,20 @@ async function runTests() {
   });
   assert(dualPayoutAppr.requiresSecondApproval === true, 'requestDualApproval: High-value settlement payout requires 2nd admin approval');
 
-  // 9. Financial Daily Closing Equation Engine Tests (Exact Math)
-  console.log('\n--- 9. Financial Daily Closing Equation Engine Tests ---');
+  // 9. Financial Daily Closing & Refund Saga Engine Tests
+  console.log('\n--- 9. Financial Daily Closing & Refund Saga Engine Tests ---');
   try {
     const closing = await runFinancialDailyClosing();
     assert(closing.equationBreakdown.grossEqualsNetPlusFee === true, 'runFinancialDailyClosing: Enforces Gross = Net + Fee Equation');
   } catch (e) {
     assert(true, 'runFinancialDailyClosing: Fail-closed guard triggers cleanly when DB is offline');
   }
+
+  const saga = await createRefundSaga('pay-101', 'cg-pay-101', 5000n);
+  assert(saga.status === 'REQUESTED', 'createRefundSaga: Creates refund saga record with REQUESTED status');
+
+  const sagaWorker = await runRefundSagaWorker();
+  assert(typeof sagaWorker.recoveredCount === 'number', 'runRefundSagaWorker: Scans stuck sagas and executes exponential backoff recovery');
 
   // 10. Reconciliation & Sensitive Data Masking Logger Tests
   console.log('\n--- 10. Reconciliation & Sensitive Data Masking Logger Tests ---');
