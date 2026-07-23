@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "npx tsx scripts/test-all.ts",
+    "loadtest": "npx tsx scripts/load-test.ts",
     "seed": "node scripts/seed-database.mjs",
     "validate:migrations": "node scripts/validate-migrations.mjs",
     "verify": "npm run validate:migrations && npm run test && npm run typecheck && npm run build"
