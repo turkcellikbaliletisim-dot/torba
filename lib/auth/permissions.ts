@@ -10,6 +10,8 @@ export type PortalRole =
   | 'PLATFORM_RISK'
   | 'PLATFORM_SUPPORT';
 
+export type Role = PortalRole;
+
 export type Permission =
   | 'profile:read'
   | 'wallet:read'
@@ -41,6 +43,10 @@ const rolePermissions: Record<PortalRole, readonly Permission[]> = {
 
 export function hasPermission(role: PortalRole, permission: Permission): boolean {
   return rolePermissions[role].includes(permission);
+}
+
+export function permissionsForRoles(roles: readonly PortalRole[]): Permission[] {
+  return [...new Set(roles.flatMap((role) => rolePermissions[role]))];
 }
 
 export function requirePermission(role: PortalRole, permission: Permission): void {
