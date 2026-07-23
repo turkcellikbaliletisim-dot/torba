@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requirePermission } from '@/lib/auth/guard';
 import { approveBySecondAdmin } from '@/lib/services/approval-service';
 import { logAuditEvent } from '@/lib/services/audit-service';
-import { defaultPaymentProvider } from '@/lib/services/payment-provider-adapter';
-import { getDbPool } from '@/lib/db';
+import { executeRefundDomainLogic } from '@/lib/services/refund-service';
 
 export async function POST(request: NextRequest) {
-  const pool = getDbPool();
-  let client;
-
   try {
     // Enforce refund.approve or settlement.approve permission
     const auth = await requirePermission(request, 'refund.approve');
@@ -31,61 +27,31 @@ export async function POST(request: NextRequest) {
 
     const record = result.approvalRecord;
 
-    // Trigger Underlying Action Execution (Item 4.9 Execution Pipeline)
+    // Trigger Underlying Action Execution via Unified Refund Domain Logic (Item 4.2)
     let executionResult: any = { executed: true };
 
     if (record.actionType === 'HIGH_VALUE_REFUND' && record.payload) {
-      const { paymentId, refundAmountMinor, reason } = record.payload;
+      const { paymentId, refundAmountMinor, reason, idempotencyKey } = record.payload;
 
-      // Call Provider Refund API
-      const refundResult = await defaultPaymentProvider.processRefund({
-        providerPaymentId: paymentId,
+      const refundExec = await executeRefundDomainLogic({
+        paymentId,
         refundAmountMinor: BigInt(refundAmountMinor || 1000000),
-        currency: 'TRY',
         reason: reason || '4-Eye Approved Refund',
+        idempotencyKey: idempotencyKey ? `appr-${idempotencyKey}` : undefined,
         requestedByUserId: auth.user.userId,
+        requestedByUserRole: auth.user.role,
+        bypassApprovalCheck: true, // Bypass 2nd approval check since 2nd approval is now granted!
       });
 
-      client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-
-        // Insert Refund Record
-        await client.query(
-          `INSERT INTO refunds (id, payment_id, amount_minor, reason, status, created_at)
-           VALUES ($1, $2, $3, $4, 'COMPLETED', NOW())
-           ON CONFLICT (id) DO NOTHING`,
-          [refundResult.refundId, paymentId, refundAmountMinor.toString(), '4-Eye Approved Refund']
+      if (!refundExec.success) {
+        // Error propagation on execution failure (Item 4.6)
+        return NextResponse.json(
+          { success: false, error: 'Onay verildi ancak finansal iade yürütmesi başarısız oldu: ' + refundExec.errorMessage },
+          { status: 500 }
         );
-
-        // Update Payment Status
-        await client.query('UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2', ['REFUNDED', paymentId]);
-
-        // Insert Reversal Ledger Entries
-        const txnId = `txn-ref-appr-${refundResult.refundId}`;
-        await client.query(
-          `INSERT INTO ledger_transactions (id, idempotency_key, description, created_at)
-           VALUES ($1, $2, '4-Eye Onaylı İade Ters Ledger Kaydı', NOW())
-           ON CONFLICT (id) DO NOTHING`,
-          [txnId, `ref-appr-${refundResult.refundId}`]
-        );
-
-        await client.query(
-          `INSERT INTO ledger_entries (id, transaction_id, wallet_id, direction, amount_minor, created_at)
-           VALUES 
-             ($1, $2, 'w-user-u-101', 'CREDIT', $3, NOW()),
-             ($4, $2, 'w-merchant-m-101', 'DEBIT', $3, NOW())
-           ON CONFLICT DO NOTHING`,
-          [`entry-appr-cr-${txnId}`, txnId, refundAmountMinor.toString(), `entry-appr-dr-${txnId}`]
-        );
-
-        await client.query('COMMIT');
-        executionResult = { refundId: refundResult.refundId, status: 'EXECUTED' };
-      } catch (e) {
-        if (client) await client.query('ROLLBACK');
-      } finally {
-        if (client) client.release();
       }
+
+      executionResult = { refundId: refundExec.refundId, status: refundExec.status };
     }
 
     await logAuditEvent({

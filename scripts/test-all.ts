@@ -11,6 +11,7 @@ import { hasPermission } from '../lib/auth/rbac';
 import { requestDualApproval, approveBySecondAdmin } from '../lib/services/approval-service';
 import { createSettlementBatch } from '../lib/services/settlement-service';
 import { setnxCache } from '../lib/db/redis';
+import { runDailyReconciliation } from '../lib/services/reconciliation-service';
 import crypto from 'crypto';
 
 console.log('🧪 Running Full TORBAA Master Production Readiness Test Suite...\n');
@@ -155,8 +156,15 @@ async function runTests() {
   const secondAdminAppr = await approveBySecondAdmin(dualAppr.approvalRecord.id, 'admin-2');
   assert(secondAdminAppr.success === true, 'approveBySecondAdmin: 2nd admin successfully grants approval');
 
-  // 9. Real Idempotency Lock & 409 Conflict Payload Hash Tests
-  console.log('\n--- 9. Real Idempotency Lock & 409 Conflict Payload Hash Tests ---');
+  // 9. Reconciliation & Discrepancy Queue Engine Tests
+  console.log('\n--- 9. Reconciliation & Discrepancy Queue Engine Tests ---');
+  const recon = await runDailyReconciliation([
+    { providerPaymentId: 'pay-999', amountMinor: 5000n, status: 'COMPLETED', settlementDate: '2026-07-23' },
+  ]);
+  assert(recon.totalChecked === 1, 'runDailyReconciliation: Audits provider report against local ledger');
+
+  // 10. Real Idempotency Lock & 409 Conflict Payload Hash Tests
+  console.log('\n--- 10. Real Idempotency Lock & 409 Conflict Payload Hash Tests ---');
   const ik = `idempotent-test-key-${Date.now()}`;
   const originalPayload = { merchantId: 'm-1', amountMinor: 5000 };
   const conflictingPayload = { merchantId: 'm-1', amountMinor: 9999 };
@@ -170,8 +178,8 @@ async function runTests() {
   const retrievedIdempotency = await getIdempotentResult(ik);
   assert(retrievedIdempotency?.responseBody?.paymentId === 'pay-999', 'saveIdempotentResult/getIdempotentResult: Idempotency lock stored and retrieved');
 
-  // 10. HMAC Webhook Signature Tests
-  console.log('\n--- 10. HMAC Webhook Signature Tests ---');
+  // 11. HMAC Webhook Signature Tests
+  console.log('\n--- 11. HMAC Webhook Signature Tests ---');
   const rawBody = '{"paymentId":"pay-123","status":"SUCCESS"}';
   const secretKey = process.env.PAYMENT_SECRET_KEY || 'dev_payment_secret_key_2026';
   const validSig = crypto.createHmac('sha256', secretKey).update(rawBody).digest('hex');
