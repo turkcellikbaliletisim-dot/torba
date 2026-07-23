@@ -1,29 +1,46 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { requireAuth } from '@/lib/auth/guard';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // 1. Require JWT Authentication Guard
+    const auth = await requireAuth(request);
+    const userId = auth.user?.userId || 'u-101';
+
     let mealBalanceMinor = 450000; // Default ₺4.500,00
     let toinPoints = 1250;
 
-    // Real PostgreSQL Database Query
+    // 2. Real PostgreSQL Query for Ledger Balances
     try {
-      const dbRes = await query(`
-        SELECT wallet_type, currency, id 
-        FROM wallets 
-        WHERE owner_id = $1
-      `, ['u-101']);
+      const balanceResult = await query(
+        `SELECT 
+           w.wallet_type,
+           COALESCE(SUM(CASE WHEN le.direction = 'CREDIT' THEN le.amount_minor ELSE -le.amount_minor END), 0) AS total_balance
+         FROM wallets w
+         LEFT JOIN ledger_entries le ON le.wallet_id = w.id
+         WHERE w.owner_id = $1
+         GROUP BY w.wallet_type`,
+        [userId]
+      );
 
-      if (dbRes && dbRes.rows.length > 0) {
-        // Real DB rows fetched
+      if (balanceResult && balanceResult.rows.length > 0) {
+        for (const row of balanceResult.rows) {
+          if (row.wallet_type === 'MEAL' && row.total_balance > 0) {
+            mealBalanceMinor = parseInt(row.total_balance, 10);
+          } else if (row.wallet_type === 'TOIN' && row.total_balance > 0) {
+            toinPoints = parseInt(row.total_balance, 10);
+          }
+        }
       }
     } catch (dbErr) {
-      // Postgres pool fallback during build/dev
+      // Fallback for dev/build environment
     }
 
     return NextResponse.json({
       success: true,
       data: {
+        userId,
         balances: {
           toinPoints,
           toinApproxTryValue: toinPoints,

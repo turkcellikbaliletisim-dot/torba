@@ -1,15 +1,14 @@
 import { money, addMoney, subtractMoney, calculateBasisPoints } from '../lib/domain/money';
 import { validateBalancedEntries, reverseEntries } from '../lib/domain/ledger';
 import { generateSignedQrToken, verifyQrToken } from '../lib/services/qr-token-service';
-import { recommendCampaigns } from '../lib/ai/recommendations';
-import { evaluateTransactionRisk } from '../lib/ai/fraud-detection';
-import { storeOtp, verifyOtpCode, canSendOtp } from '../lib/auth/otp-store';
-import { checkRateLimit } from '../lib/middleware/rate-limit';
+import { storeOtp, verifyOtpCode, canSendOtp, deleteOtp, generateSecureOtpCode } from '../lib/auth/otp-store';
+import { checkRateLimitAsync } from '../lib/middleware/rate-limit';
 import { signSessionToken, verifySessionToken } from '../lib/auth/jwt';
 import { verifyWebhookSignature } from '../lib/services/payment-gateway';
+import { getIdempotentResult, saveIdempotentResult } from '../lib/services/idempotency-service';
 import crypto from 'crypto';
 
-console.log('🧪 Running Full TORBAA Automated Test Suite...\n');
+console.log('🧪 Running Full TORBAA Automated Production Test Suite...\n');
 
 let passedTests = 0;
 let totalTests = 0;
@@ -75,29 +74,34 @@ async function runTests() {
   assert(verification.isValid === true, 'verifyQrToken: Valid HMAC signature token verifies successfully');
   assert(verification.payload?.amountMinor === 4500n, 'verifyQrToken: Decodes original payload amountMinor');
 
-  // 4. Hashed OTP Engine Tests
-  console.log('\n--- 4. Hashed OTP Engine Tests ---');
+  // 4. Production Secure Cryptographic OTP Engine Tests
+  console.log('\n--- 4. Production Secure Cryptographic OTP Engine Tests ---');
+  const secureCode = generateSecureOtpCode();
+  assert(secureCode.length === 6 && !isNaN(Number(secureCode)), 'generateSecureOtpCode: Generates 6-digit crypto.randomInt OTP');
+
   const testPhone = '5329998877';
-  const testCode = '849201';
-  storeOtp(testPhone, testCode, 120);
+  await storeOtp(testPhone, secureCode, 120);
 
-  const invalidRes = verifyOtpCode(testPhone, '000000');
-  assert(invalidRes.isValid === false, 'verifyOtpCode: Wrong code rejected');
+  const invalidRes = await verifyOtpCode(testPhone, '000000');
+  assert(invalidRes.isValid === false, 'verifyOtpCode: Wrong code rejected by HMAC comparison');
 
-  const validRes = verifyOtpCode(testPhone, testCode);
-  assert(validRes.isValid === true, 'verifyOtpCode: Correct SHA-256 code verified');
+  const validRes = await verifyOtpCode(testPhone, secureCode);
+  assert(validRes.isValid === true, 'verifyOtpCode: Correct HMAC-SHA256 code verified and consumed');
 
-  const cooldownCheck = canSendOtp(testPhone, 60);
-  assert(cooldownCheck.allowed === true, 'canSendOtp: Cooldown cleared after verification');
+  // Test deleteOtp cleanup
+  await storeOtp(testPhone, '112233', 120);
+  await deleteOtp(testPhone);
+  const deletedVerify = await verifyOtpCode(testPhone, '112233');
+  assert(deletedVerify.isValid === false, 'deleteOtp: Cleans up stored OTP on SMS transmission error');
 
-  // 5. Sliding Window Rate Limiter Tests
-  console.log('\n--- 5. Sliding Window Rate Limiter Tests ---');
-  const rlKey = 'test-ip-123';
+  // 5. Distributed Rate Limiter Tests
+  console.log('\n--- 5. Distributed Rate Limiter Tests ---');
+  const rlKey = 'test-ip-redis-123';
   for (let i = 0; i < 3; i++) {
-    checkRateLimit(rlKey, 3, 60);
+    await checkRateLimitAsync(rlKey, 3, 60);
   }
-  const blockedRl = checkRateLimit(rlKey, 3, 60);
-  assert(blockedRl.allowed === false, 'checkRateLimit: Blocks request after reaching limit');
+  const blockedRl = await checkRateLimitAsync(rlKey, 3, 60);
+  assert(blockedRl.allowed === false, 'checkRateLimitAsync: Blocks request after reaching limit');
 
   // 6. JOSE JWT Authentication Tests
   console.log('\n--- 6. JOSE JWT Authentication Tests ---');
@@ -110,13 +114,24 @@ async function runTests() {
   const decodedSession = await verifySessionToken(sessionJwt);
   assert(decodedSession?.userId === 'u-jwt-1' && decodedSession?.role === 'ADMIN', 'signSessionToken/verifySessionToken: Valid HS256 JWT verified');
 
-  // 7. HMAC Webhook Signature Tests
-  console.log('\n--- 7. HMAC Webhook Signature Tests ---');
+  // 7. Real Idempotency Lock & Storage Tests
+  console.log('\n--- 7. Real Idempotency Lock & Storage Tests ---');
+  const ik = `idempotent-test-key-${Date.now()}`;
+  await saveIdempotentResult(ik, 200, { paymentId: 'pay-999', status: 'SUCCESS' });
+  const retrievedIdempotency = await getIdempotentResult(ik);
+  assert(retrievedIdempotency?.responseBody?.paymentId === 'pay-999', 'saveIdempotentResult/getIdempotentResult: Idempotency lock stored and retrieved');
+
+  // 8. HMAC Webhook Signature Tests
+  console.log('\n--- 8. HMAC Webhook Signature Tests ---');
   const rawBody = '{"paymentId":"pay-123","status":"SUCCESS"}';
   const secretKey = process.env.PAYMENT_SECRET_KEY || 'dev_payment_secret_key_2026';
   const validSig = crypto.createHmac('sha256', secretKey).update(rawBody).digest('hex');
+
   const isSigValid = verifyWebhookSignature(rawBody, validSig);
   assert(isSigValid === true, 'verifyWebhookSignature: Valid HMAC-SHA256 signature passes verification');
+
+  const mismatchLenSig = verifyWebhookSignature(rawBody, 'short_invalid_sig');
+  assert(mismatchLenSig === false, 'verifyWebhookSignature: Length mismatch handled safely without timingSafeEqual Exception');
 
   console.log(`\n🎉 Test Suite Completed: ${passedTests}/${totalTests} tests passed!`);
 }

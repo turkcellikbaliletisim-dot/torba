@@ -2,12 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PaymentIntentSchema } from '@/lib/validation/schemas';
 import { initPayment } from '@/lib/services/payment-gateway';
 import { logAuditEvent } from '@/lib/services/audit-service';
+import { requireAuth } from '@/lib/auth/guard';
+import { getIdempotentResult, saveIdempotentResult } from '@/lib/services/idempotency-service';
 
 export async function POST(request: NextRequest) {
   try {
+    // 1. Enforce Authentication Guard
+    const auth = await requireAuth(request);
+    if (!auth.isAuthenticated || !auth.user) {
+      return auth.errorResponse || NextResponse.json({ success: false, error: 'Yetkisiz erişim.' }, { status: 401 });
+    }
+
     const rawBody = await request.json();
 
-    // Zod Schema Validation
+    // 2. Zod Schema Validation
     const validation = PaymentIntentSchema.safeParse(rawBody);
     if (!validation.success) {
       return NextResponse.json(
@@ -18,7 +26,13 @@ export async function POST(request: NextRequest) {
 
     const { merchantId, branchId, amountMinor, paymentType, idempotencyKey } = validation.data;
 
-    // Execute Payment Gateway Initialization
+    // 3. Check Idempotency Key Lock (24h TTL)
+    const existingResult = await getIdempotentResult(idempotencyKey);
+    if (existingResult) {
+      return NextResponse.json(existingResult.responseBody, { status: existingResult.statusCode });
+    }
+
+    // 4. Execute Payment Gateway Initialization
     const paymentResult = await initPayment({
       merchantId,
       orderId: `ord-${Date.now()}`,
@@ -27,16 +41,7 @@ export async function POST(request: NextRequest) {
       idempotencyKey,
     });
 
-    // Write Audit Log
-    await logAuditEvent({
-      actorId: 'system-user',
-      action: 'PAYMENT_INTENT_CREATED',
-      resourceType: 'PAYMENT',
-      resourceId: paymentResult.paymentId,
-      metadata: { merchantId, amountMinor, paymentType, idempotencyKey },
-    });
-
-    return NextResponse.json({
+    const responseData = {
       success: true,
       message: 'Ödeme başlatıldı.',
       data: {
@@ -45,7 +50,21 @@ export async function POST(request: NextRequest) {
         amountMinor,
         idempotencyKey,
       },
+    };
+
+    // Save Idempotency Result
+    await saveIdempotentResult(idempotencyKey, 200, responseData);
+
+    // Audit Log
+    await logAuditEvent({
+      actorId: auth.user.userId,
+      action: 'PAYMENT_INTENT_CREATED',
+      resourceType: 'PAYMENT',
+      resourceId: paymentResult.paymentId,
+      metadata: { merchantId, amountMinor, paymentType, idempotencyKey },
     });
+
+    return NextResponse.json(responseData, { status: 200 });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: 'Ödeme başlatılamadı.' },

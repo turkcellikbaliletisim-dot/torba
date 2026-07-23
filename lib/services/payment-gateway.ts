@@ -18,7 +18,6 @@ export interface PaymentInitResult {
   errorMessage?: string;
 }
 
-const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'dev_payment_api_key_2026';
 const PAYMENT_SECRET_KEY = process.env.PAYMENT_SECRET_KEY || 'dev_payment_secret_key_2026';
 
 export async function initPayment(options: PaymentInitOptions): Promise<PaymentInitResult> {
@@ -35,10 +34,19 @@ export function verifyWebhookSignature(
   incomingSignature: string
 ): boolean {
   if (!incomingSignature) return false;
+
   const expectedSig = crypto
     .createHmac('sha256', PAYMENT_SECRET_KEY)
     .update(rawBody)
     .digest('hex');
 
-  return crypto.timingSafeEqual(Buffer.from(incomingSignature), Buffer.from(expectedSig));
+  const incomingBuf = Buffer.from(incomingSignature, 'utf8');
+  const expectedBuf = Buffer.from(expectedSig, 'utf8');
+
+  // Prevent timingSafeEqual length mismatch Exception
+  if (incomingBuf.length !== expectedBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(incomingBuf, expectedBuf);
 }

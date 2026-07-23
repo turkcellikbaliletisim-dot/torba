@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { SendOtpSchema } from '@/lib/validation/schemas';
 import { sendSms } from '@/lib/services/sms-service';
-import { canSendOtp, storeOtp } from '@/lib/auth/otp-store';
-import { checkRateLimit } from '@/lib/middleware/rate-limit';
+import { canSendOtp, storeOtp, deleteOtp, generateSecureOtpCode } from '@/lib/auth/otp-store';
+import { checkRateLimitAsync } from '@/lib/middleware/rate-limit';
 
 export async function POST(request: Request) {
   try {
     // 1. Sliding Window IP Rate Limit Check
     const clientIp = request.headers.get('x-forwarded-for') || '127.0.0.1';
-    const rateLimit = checkRateLimit(`send-otp:${clientIp}`, 5, 60);
+    const rateLimit = await checkRateLimitAsync(`send-otp:${clientIp}`, 5, 60);
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const { phone } = validation.data;
 
     // 3. Cooldown Check per Phone Number
-    const cooldownCheck = canSendOtp(phone, 60);
+    const cooldownCheck = await canSendOtp(phone, 60);
     if (!cooldownCheck.allowed) {
       return NextResponse.json(
         { success: false, error: `Bu numaraya yeni kod göndermek için ${cooldownCheck.remainingSeconds} saniye beklemelisiniz.` },
@@ -40,11 +40,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Generate Random 6-digit OTP Code
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // 4. Generate Cryptographically Secure 6-digit OTP Code (crypto.randomInt)
+    const otpCode = generateSecureOtpCode();
 
-    // 5. Store Hashed OTP with SHA-256 and 120s Expiration TTL
-    storeOtp(phone, otpCode, 120);
+    // 5. Store HMAC-SHA256 Hashed OTP with 120s Expiration TTL
+    await storeOtp(phone, otpCode, 120);
 
     // 6. Transmit SMS via Provider
     const smsResult = await sendSms({
@@ -53,6 +53,8 @@ export async function POST(request: Request) {
     });
 
     if (!smsResult.success) {
+      // Clean up stored OTP on SMS transmission failure
+      await deleteOtp(phone);
       return NextResponse.json(
         { success: false, error: smsResult.error || 'SMS gönderimi başarısız.' },
         { status: 502 }

@@ -9,12 +9,13 @@ const JWT_SECRET_KEY = new TextEncoder().encode(
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Unprotected / Public Auth endpoints
+  // Unprotected / Public Auth endpoints & Webhook (Webhook is authenticated via HMAC signature)
   if (
     pathname.startsWith('/api/v1/auth') ||
     pathname.startsWith('/api/v1/health') ||
     pathname.startsWith('/api/v1/mobile/merchants') ||
     pathname.startsWith('/api/v1/mobile/campaigns') ||
+    pathname.startsWith('/api/v1/payments/webhook') ||
     pathname === '/mobile'
   ) {
     return NextResponse.next();
@@ -24,9 +25,10 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/api/v1/admin');
   const isPanelRoute = pathname.startsWith('/panel') || pathname.startsWith('/api/v1/panel');
   const isCorporateRoute = pathname.startsWith('/corporate') || pathname.startsWith('/api/v1/corporate');
+  const isProtectedPaymentRoute = pathname.startsWith('/api/v1/payments/intent');
   const isProtectedMobileRoute = pathname.startsWith('/api/v1/mobile/wallet') || pathname.startsWith('/api/v1/qr');
 
-  if (!isAdminRoute && !isPanelRoute && !isCorporateRoute && !isProtectedMobileRoute) {
+  if (!isAdminRoute && !isPanelRoute && !isCorporateRoute && !isProtectedPaymentRoute && !isProtectedMobileRoute) {
     return NextResponse.next();
   }
 
@@ -85,6 +87,7 @@ export const config = {
     '/api/v1/admin/:path*',
     '/api/v1/panel/:path*',
     '/api/v1/corporate/:path*',
+    '/api/v1/payments/intent',
     '/api/v1/mobile/wallet',
     '/api/v1/qr/:path*',
   ],

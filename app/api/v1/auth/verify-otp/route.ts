@@ -3,13 +3,13 @@ import { VerifyOtpSchema } from '@/lib/validation/schemas';
 import { signSessionToken } from '@/lib/auth/jwt';
 import { verifyOtpCode } from '@/lib/auth/otp-store';
 import { query } from '@/lib/db';
-import { checkRateLimit } from '@/lib/middleware/rate-limit';
+import { checkRateLimitAsync } from '@/lib/middleware/rate-limit';
 
 export async function POST(request: Request) {
   try {
     // 1. Rate Limit Check
     const clientIp = request.headers.get('x-forwarded-for') || '127.0.0.1';
-    const rateLimit = checkRateLimit(`verify-otp:${clientIp}`, 10, 60);
+    const rateLimit = await checkRateLimitAsync(`verify-otp:${clientIp}`, 10, 60);
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -32,8 +32,8 @@ export async function POST(request: Request) {
 
     const { phone, code } = validation.data;
 
-    // 3. Strict SHA-256 OTP Hash Verification (Max 3 attempts, 120s TTL)
-    const otpVerification = verifyOtpCode(phone, code);
+    // 3. Strict HMAC-SHA256 OTP Hash Verification
+    const otpVerification = await verifyOtpCode(phone, code);
     if (!otpVerification.isValid) {
       return NextResponse.json(
         { success: false, error: otpVerification.error },
@@ -41,20 +41,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Real PostgreSQL User Lookup & Auto-Registration
+    // 4. Real PostgreSQL User Lookup & Role Query
     let userId = `u-${phone}`;
-    let fullName = 'Yeni Kullanıcı';
+    let fullName = 'Kullanıcı';
     let role: 'CUSTOMER' | 'ADMIN' | 'MERCHANT' | 'CORPORATE_HR' = 'CUSTOMER';
 
     try {
       const userResult = await query(
-        'SELECT id, full_name, phone FROM users WHERE phone = $1 LIMIT 1',
+        `SELECT u.id, u.full_name, u.phone, r.name as role_name
+         FROM users u
+         LEFT JOIN roles r ON u.role_id = r.id
+         WHERE u.phone = $1 LIMIT 1`,
         [phone]
       );
 
       if (userResult && userResult.rows.length > 0) {
         userId = userResult.rows[0].id;
         fullName = userResult.rows[0].full_name;
+        if (userResult.rows[0].role_name) {
+          role = userResult.rows[0].role_name as any;
+        }
       } else {
         // User not found -> Auto-register in PostgreSQL
         const newUserId = `u-${Date.now()}`;
@@ -72,11 +78,17 @@ export async function POST(request: Request) {
           [`w-meal-${userId}`, userId, `w-toin-${userId}`]
         );
       }
-    } catch (dbErr) {
-      // PostgreSQL pool fallback for dev/build environment
+    } catch (dbErr: any) {
+      // In production, DB failure must abort authentication cleanly
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json(
+          { success: false, error: 'Veritabanı bağlantı hatası nedeniyle oturum açılamadı.' },
+          { status: 503 }
+        );
+      }
     }
 
-    // 5. Generate Real JOSE HS256 JWT Token
+    // 5. Generate Real JOSE HS256 JWT Token with User's DB Role
     const token = await signSessionToken({
       userId,
       phone,
