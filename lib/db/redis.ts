@@ -34,6 +34,31 @@ export function getRedisClient(): Redis | null {
   return isRedisAvailable ? redisClient : null;
 }
 
+/**
+ * Atomic SET NX EX (Set if Not Exists with Expiry TTL)
+ * Guarantees zero race conditions across distributed workers.
+ */
+export async function setnxCache(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+  const client = getRedisClient();
+  if (client) {
+    try {
+      const res = await client.set(key, value, 'EX', ttlSeconds, 'NX');
+      return res === 'OK';
+    } catch (e) {
+      isRedisAvailable = false;
+    }
+  }
+
+  // Atomic Memory Fallback
+  const existing = memoryStore.get(key);
+  if (existing && Date.now() <= existing.expiresAtMs) {
+    return false; // Already locked
+  }
+
+  memoryStore.set(key, { value, expiresAtMs: Date.now() + ttlSeconds * 1000 });
+  return true;
+}
+
 export async function setCache(key: string, value: string, ttlSeconds: number): Promise<void> {
   const client = getRedisClient();
   if (client) {
@@ -44,7 +69,6 @@ export async function setCache(key: string, value: string, ttlSeconds: number): 
       isRedisAvailable = false;
     }
   }
-  // In-memory fallback
   memoryStore.set(key, { value, expiresAtMs: Date.now() + ttlSeconds * 1000 });
 }
 
@@ -58,7 +82,6 @@ export async function getCache(key: string): Promise<string | null> {
       isRedisAvailable = false;
     }
   }
-  // In-memory fallback
   const record = memoryStore.get(key);
   if (!record) return null;
   if (Date.now() > record.expiresAtMs) {

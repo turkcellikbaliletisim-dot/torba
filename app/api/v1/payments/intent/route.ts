@@ -3,7 +3,7 @@ import { PaymentIntentSchema } from '@/lib/validation/schemas';
 import { defaultPaymentProvider } from '@/lib/services/payment-provider-adapter';
 import { logAuditEvent } from '@/lib/services/audit-service';
 import { requireAuth } from '@/lib/auth/guard';
-import { acquireIdempotencyLock, saveIdempotentResult } from '@/lib/services/idempotency-service';
+import { acquireIdempotencyLock, saveIdempotentResult, releaseIdempotencyLock } from '@/lib/services/idempotency-service';
 import { getDbPool } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const { merchantId, branchId, amountMinor, paymentType, idempotencyKey } = validation.data;
 
-    // 3. Acquire Atomic Idempotency Lock with Payload Hashing (Section 4.3)
+    // 3. Acquire Atomic Idempotency Lock via Redis SET NX EX (Section 4.2)
     const lockResult = await acquireIdempotencyLock(idempotencyKey, rawBody, 60);
 
     if (lockResult.conflict) {
@@ -56,19 +56,28 @@ export async function POST(request: NextRequest) {
     const orderId = `ord-${Date.now()}`;
     const localPaymentId = `pay-${orderId}`;
 
-    // 4. Create Local PENDING Payment Record in DB before provider call (Section 4.2)
-    client = await pool.connect();
+    // 4. Fail-Closed Local PENDING Payment DB Insert (Section 4.3)
+    let isDbCreated = false;
     try {
+      client = await pool.connect();
       await client.query(
         `INSERT INTO payments (id, merchant_id, user_id, amount_minor, currency, status, idempotency_key, created_at)
          VALUES ($1, $2, $3, $4, 'TRY', 'PENDING', $5, NOW())
          ON CONFLICT (id) DO NOTHING`,
         [localPaymentId, merchantId, auth.user.userId, amountMinor, idempotencyKey]
       );
+      isDbCreated = true;
     } catch (dbErr) {
-      // Non-blocking fallback
+      if (process.env.NODE_ENV === 'production') {
+        // Fail-Closed: DO NOT call payment provider if DB insert fails! (Section 4.3)
+        await releaseIdempotencyLock(idempotencyKey);
+        return NextResponse.json(
+          { success: false, error: 'Veritabanı erişim hatası nedeniyle ödeme başlatılamadı (Fail-Closed Guard).' },
+          { status: 503 }
+        );
+      }
     } finally {
-      client.release();
+      if (client) client.release();
     }
 
     // 5. Execute Payment Provider Call
@@ -82,23 +91,26 @@ export async function POST(request: NextRequest) {
     });
 
     if (!providerResult.success) {
-      // Update status to FAILED in DB
-      try {
-        await pool.query('UPDATE payments SET status = $1 WHERE id = $2', ['FAILED', localPaymentId]);
-      } catch (e) {}
+      if (isDbCreated) {
+        try {
+          await pool.query('UPDATE payments SET status = $1 WHERE id = $2', ['FAILED', localPaymentId]);
+        } catch (e) {}
+      }
 
       const failResponse = { success: false, error: providerResult.errorMessage || 'Ödeme kuruluşu reddetti.' };
       await saveIdempotentResult(idempotencyKey, rawBody, 'FAILED_FINAL', 502, failResponse);
       return NextResponse.json(failResponse, { status: 502 });
     }
 
-    // Update status to PENDING / WAITING_3DS in DB with provider payment ID
-    try {
-      await pool.query(
-        'UPDATE payments SET status = $1, provider_payment_id = $2 WHERE id = $3',
-        [providerResult.status, providerResult.providerPaymentId, localPaymentId]
-      );
-    } catch (e) {}
+    // Update status to WAITING_3DS / PENDING in DB with provider payment ID
+    if (isDbCreated) {
+      try {
+        await pool.query(
+          'UPDATE payments SET status = $1, provider_payment_id = $2 WHERE id = $3',
+          [providerResult.status, providerResult.providerPaymentId, localPaymentId]
+        );
+      } catch (e) {}
+    }
 
     const responseData = {
       success: true,
@@ -108,6 +120,7 @@ export async function POST(request: NextRequest) {
         providerPaymentId: providerResult.providerPaymentId,
         status: providerResult.status,
         amountMinor,
+        branchId,
         idempotencyKey,
         correlationId,
       },
@@ -122,7 +135,7 @@ export async function POST(request: NextRequest) {
       action: 'PAYMENT_INTENT_CREATED',
       resourceType: 'PAYMENT',
       resourceId: localPaymentId,
-      metadata: { merchantId, amountMinor, paymentType, idempotencyKey, correlationId },
+      metadata: { merchantId, branchId, amountMinor, paymentType, idempotencyKey, correlationId },
     });
 
     return NextResponse.json(responseData, { status: 200 });

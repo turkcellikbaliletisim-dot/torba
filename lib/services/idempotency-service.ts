@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { setCache, getCache, deleteCache } from '@/lib/db/redis';
+import { setCache, getCache, deleteCache, setnxCache } from '@/lib/db/redis';
 import { query } from '@/lib/db';
 
 export type IdempotencyState = 'PROCESSING' | 'COMPLETED' | 'FAILED_RETRYABLE' | 'FAILED_FINAL';
@@ -19,8 +19,7 @@ export function computePayloadHash(payload: any): string {
 }
 
 /**
- * Atomically acquires an idempotency lock for a key and verifies payload hash consistency.
- * Returns 409 Conflict status if payload hash mismatch is detected.
+ * True Atomic Idempotency Lock Acquisition via Redis SET NX EX / DB Lock (Item 4.2)
  */
 export async function acquireIdempotencyLock(
   key: string,
@@ -29,20 +28,7 @@ export async function acquireIdempotencyLock(
 ): Promise<{ acquired: boolean; conflict?: boolean; existingRecord?: IdempotencyRecord }> {
   const cacheKey = `idempotency:${key}`;
   const incomingHash = computePayloadHash(payload);
-  const existing = await getCache(cacheKey);
 
-  if (existing) {
-    const record: IdempotencyRecord = JSON.parse(existing);
-
-    // Payload Hash Conflict Check (Audit Item 4.3)
-    if (record.payloadHash && record.payloadHash !== incomingHash) {
-      return { acquired: false, conflict: true, existingRecord: record };
-    }
-
-    return { acquired: false, conflict: false, existingRecord: record };
-  }
-
-  // Set PROCESSING state lock with payloadHash
   const processingRecord: IdempotencyRecord = {
     key,
     payloadHash: incomingHash,
@@ -50,13 +36,29 @@ export async function acquireIdempotencyLock(
     createdAtMs: Date.now(),
   };
 
-  await setCache(cacheKey, JSON.stringify(processingRecord), ttlSeconds);
-  return { acquired: true };
+  // Try True Atomic SET NX EX
+  const isAcquired = await setnxCache(cacheKey, JSON.stringify(processingRecord), ttlSeconds);
+
+  if (isAcquired) {
+    return { acquired: true };
+  }
+
+  // If atomic lock failed, fetch existing record for conflict check or cached response
+  const existing = await getCache(cacheKey);
+  if (existing) {
+    const record: IdempotencyRecord = JSON.parse(existing);
+
+    // Payload Hash Conflict Check (Item 4.2)
+    if (record.payloadHash && record.payloadHash !== incomingHash) {
+      return { acquired: false, conflict: true, existingRecord: record };
+    }
+
+    return { acquired: false, conflict: false, existingRecord: record };
+  }
+
+  return { acquired: false };
 }
 
-/**
- * Stores the final completed or failed result of an idempotent transaction for 24 hours (86400 seconds)
- */
 export async function saveIdempotentResult(
   key: string,
   payload: any,

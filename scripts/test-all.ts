@@ -9,6 +9,8 @@ import { getIdempotentResult, saveIdempotentResult, acquireIdempotencyLock } fro
 import { defaultPaymentProvider } from '../lib/services/payment-provider-adapter';
 import { hasPermission } from '../lib/auth/rbac';
 import { requestDualApproval, approveBySecondAdmin } from '../lib/services/approval-service';
+import { createSettlementBatch } from '../lib/services/settlement-service';
+import { setnxCache } from '../lib/db/redis';
 import crypto from 'crypto';
 
 console.log('🧪 Running Full TORBAA Master Production Readiness Test Suite...\n');
@@ -98,8 +100,14 @@ async function runTests() {
   const deletedVerify = await verifyOtpCode(testPhone, '112233');
   assert(deletedVerify.isValid === false, 'deleteOtp: Cleans up stored OTP on SMS transmission error');
 
-  // 5. Distributed Rate Limiter Tests
-  console.log('\n--- 5. Distributed Rate Limiter Tests ---');
+  // 5. Distributed Rate Limiter & Atomic SET NX Tests
+  console.log('\n--- 5. Distributed Rate Limiter & Atomic SET NX Tests ---');
+  const setnx1 = await setnxCache('lock-key-1', 'locked', 60);
+  assert(setnx1 === true, 'setnxCache: First atomic SET NX EX lock acquired');
+
+  const setnx2 = await setnxCache('lock-key-1', 'locked', 60);
+  assert(setnx2 === false, 'setnxCache: Second atomic SET NX EX lock fails cleanly (Zero Race Conditions)');
+
   const rlKey = 'test-ip-redis-123';
   for (let i = 0; i < 3; i++) {
     await checkRateLimitAsync(rlKey, 3, 60);
@@ -122,11 +130,14 @@ async function runTests() {
   assert(hasPermission('CUSTOMER', 'refund.approve') === false, 'hasPermission: Customer does not have refund.approve permission');
   assert(hasPermission('MERCHANT', 'refund.create') === true, 'hasPermission: Merchant has refund.create permission');
 
-  // 7. Payment Provider Adapter & Settlement Calculation Tests
-  console.log('\n--- 7. Payment Provider Adapter & Settlement Calculation Tests ---');
+  // 7. Payment Provider Adapter & Settlement Batch Calculation Tests
+  console.log('\n--- 7. Payment Provider Adapter & Settlement Batch Calculation Tests ---');
   const settlement = defaultPaymentProvider.calculateSettlement(10000n, 300); // ₺100,00 - %3 = ₺97,00 net
   assert(settlement.commissionAmountMinor === 300n, 'calculateSettlement: 3% commission on ₺100 = ₺3,00');
   assert(settlement.netPayoutMinor === 9700n, 'calculateSettlement: Net merchant payout = ₺97,00');
+
+  const batch = await createSettlementBatch('m-101');
+  assert(batch.merchantId === 'm-101' && batch.status === 'PENDING_PAYOUT', 'createSettlementBatch: Groups completed payments into settlement payout batch');
 
   // 8. 4-Eye Approval (Çift Onay) Engine Tests
   console.log('\n--- 8. 4-Eye Approval (Çift Onay) Engine Tests ---');

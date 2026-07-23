@@ -13,6 +13,7 @@ export interface ApprovalRecord {
   status: 'PENDING_SECOND_APPROVAL' | 'APPROVED' | 'REJECTED';
   firstApproverId: string;
   secondApproverId?: string;
+  payload?: Record<string, any>;
   createdAtMs: number;
 }
 
@@ -30,6 +31,7 @@ export async function requestDualApproval(req: DualApprovalRequest): Promise<{ r
     actionType: req.actionType,
     status,
     firstApproverId: req.requestedByUserId,
+    payload: req.payload,
     createdAtMs: Date.now(),
   };
 
@@ -48,7 +50,10 @@ export async function requestDualApproval(req: DualApprovalRequest): Promise<{ r
   return { requiresSecondApproval: isHighValue, approvalRecord: record };
 }
 
-export async function approveBySecondAdmin(approvalId: string, secondApproverUserId: string): Promise<{ success: boolean; error?: string }> {
+export async function approveBySecondAdmin(
+  approvalId: string,
+  secondApproverUserId: string
+): Promise<{ success: boolean; approvalRecord?: ApprovalRecord; error?: string }> {
   // Check memory store fallback
   const memRecord = memoryApprovals.get(approvalId);
   if (memRecord) {
@@ -57,21 +62,34 @@ export async function approveBySecondAdmin(approvalId: string, secondApproverUse
     }
     memRecord.status = 'APPROVED';
     memRecord.secondApproverId = secondApproverUserId;
-    return { success: true };
+    return { success: true, approvalRecord: memRecord };
   }
 
   try {
-    const res = await query('SELECT first_approver_id, status FROM approval_requests WHERE id = $1 LIMIT 1', [approvalId]);
+    const res = await query('SELECT first_approver_id, action_type, status, payload FROM approval_requests WHERE id = $1 LIMIT 1', [approvalId]);
     if (!res || res.rows.length === 0) {
       return { success: false, error: 'Approval request not found.' };
     }
 
-    if (res.rows[0].first_approver_id === secondApproverUserId) {
+    const row = res.rows[0];
+
+    if (row.first_approver_id === secondApproverUserId) {
       return { success: false, error: 'Çift Onay Prensibi (4-Eye Principle): Aynı yönetici ikinci onayı veremez.' };
     }
 
     await query('UPDATE approval_requests SET status = $1, second_approver_id = $2, updated_at = NOW() WHERE id = $3', ['APPROVED', secondApproverUserId, approvalId]);
-    return { success: true };
+    
+    const dbRecord: ApprovalRecord = {
+      id: approvalId,
+      actionType: row.action_type,
+      status: 'APPROVED',
+      firstApproverId: row.first_approver_id,
+      secondApproverId: secondApproverUserId,
+      payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
+      createdAtMs: Date.now(),
+    };
+
+    return { success: true, approvalRecord: dbRecord };
   } catch (e) {
     return { success: false, error: 'Approval verification failed.' };
   }

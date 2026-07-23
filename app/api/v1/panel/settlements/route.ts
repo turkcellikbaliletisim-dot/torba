@@ -1,44 +1,51 @@
 import { NextResponse } from 'next/server';
+import { createSettlementBatch } from '@/lib/services/settlement-service';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const merchantId = searchParams.get('merchantId') || 'm-101';
+
+    const batch = await createSettlementBatch(merchantId);
+
     return NextResponse.json({
       success: true,
       data: {
-        merchantName: 'BigChefs Cafe & Brasserie - Balıkesir Şubesi',
-        totalVolumeMinor: 12500000, // ₺125.000,00
-        netPayableMinor: 12125000, // ₺121.250,00 (%3 komisyon kesintisi sonrası)
-        commissionMinor: 375000, // ₺3.750,00 (%3 şeffaf komisyon)
-        nextPayoutDate: '2026-07-27',
-        payoutCycleDays: 7,
-        settlementStatus: 'SCHEDULED',
-        recentTransactions: [
+        summary: {
+          todayGmvMinor: Number(batch.totalGrossMinor),
+          todayGmvCurrency: 'TRY',
+          pendingPayoutMinor: Number(batch.totalNetPayoutMinor),
+          commissionBasisPoints: 300,
+          commissionDeductionMinor: Number(batch.totalCommissionMinor),
+          nextPayoutDate: '2026-07-28',
+          itemCount: batch.itemCount,
+        },
+        batchId: batch.batchId,
+        recentSettlements: [
           {
-            id: 'tx-101',
-            date: '2026-07-23 14:15',
-            customerName: 'Ahmet Y.',
-            type: 'YEMEK_KARTI',
-            grossAmountMinor: 45000, // ₺450,00
-            commissionMinor: 1350, // ₺13,50
-            netAmountMinor: 43650, // ₺436,50
-            status: 'COMPLETED',
+            id: 'settlement-101',
+            date: '2026-07-21',
+            grossAmountMinor: 1250000,
+            commissionMinor: 37500,
+            netPayoutMinor: 1212500,
+            status: 'PAID',
+            bankReference: 'TR99 0006 2000 0000 1234 5678 90',
           },
           {
-            id: 'tx-102',
-            date: '2026-07-23 13:30',
-            customerName: 'Mehmet K.',
-            type: 'TOIN_HARCAMA',
-            grossAmountMinor: 12000, // ₺120,00
-            commissionMinor: 360,
-            netAmountMinor: 11640,
-            status: 'COMPLETED',
+            id: 'settlement-102',
+            date: '2026-07-14',
+            grossAmountMinor: 980000,
+            commissionMinor: 29400,
+            netPayoutMinor: 950600,
+            status: 'PAID',
+            bankReference: 'TR99 0006 2000 0000 1234 5678 91',
           },
         ],
       },
     });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: 'Hakediş bilgileri alınamadı.' },
+      { success: false, error: 'Hakediş dökümü alınamadı.' },
       { status: 500 }
     );
   }
