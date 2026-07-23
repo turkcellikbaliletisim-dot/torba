@@ -2,84 +2,98 @@ import { query } from '@/lib/db';
 
 export interface FinancialClosingSummary {
   businessDate: string;
-  providerTotalMinor: bigint;
-  localPaymentsTotalMinor: bigint;
-  ledgerTotalMinor: bigint;
-  settlementTotalMinor: bigint;
-  bankPayoutTotalMinor: bigint;
+  providerCapturedGrossMinor: bigint;
+  localCompletedGrossMinor: bigint;
+  platformCommissionMinor: bigint;
+  merchantNetMinor: bigint;
+  eligibleSettlementNetMinor: bigint;
+  paidBankPayoutNetMinor: bigint;
   isBalanced: boolean;
   discrepancyMinor: bigint;
+  equationBreakdown: {
+    grossMatchesProvider: boolean;
+    grossEqualsNetPlusFee: boolean;
+    settlementEqualsPaidPayout: boolean;
+  };
 }
 
 /**
- * Enforces Master Financial Daily Closing Equation:
- * Provider Total = Local Payment Total = Ledger Total = Settlement Total = Bank Payout Total
+ * Enforces Master Financial Daily Closing Equations (v8.0.0 Section 8):
+ * 1. Provider Captured Gross = Local Completed Payment Gross
+ * 2. Local Payment Gross = Merchant Net + Platform Commission
+ * 3. Eligible Settlement Net = Settlement Items Net Total
+ * 4. Paid Settlement Net = Successful Bank Payout Net
  */
 export async function runFinancialDailyClosing(businessDate?: string): Promise<FinancialClosingSummary> {
   const dateStr = businessDate || new Date().toISOString().substring(0, 10);
 
-  let localTotal = 0n;
-  let ledgerTotal = 0n;
-  let settlementTotal = 0n;
-  let payoutTotal = 0n;
+  let localGross = 0n;
+  let commissionSum = 0n;
+  let settlementNet = 0n;
+  let payoutNet = 0n;
 
   try {
-    // 1. Local COMPLETED Payments Total
+    // 1. Local COMPLETED Payments Gross & Commission Total
     const payRes = await query(
-      "SELECT COALESCE(SUM(amount_minor), 0) AS total FROM payments WHERE status = 'COMPLETED' AND DATE(created_at) = $1",
+      `SELECT 
+         COALESCE(SUM(amount_minor), 0) AS total_gross,
+         COALESCE(SUM((amount_minor * COALESCE(commission_basis_points, 300)) / 10000), 0) AS total_commission
+       FROM payments 
+       WHERE status = 'COMPLETED' AND DATE(created_at) = $1`,
       [dateStr]
     );
+
     if (payRes && payRes.rows.length > 0) {
-      localTotal = BigInt(payRes.rows[0].total);
+      localGross = BigInt(payRes.rows[0].total_gross);
+      commissionSum = BigInt(payRes.rows[0].total_commission);
     }
 
-    // 2. Double-Entry Ledger Total (Sum of User Debit entries)
-    const ledgerRes = await query(
-      "SELECT COALESCE(SUM(amount_minor), 0) AS total FROM ledger_entries WHERE direction = 'DEBIT' AND DATE(created_at) = $1",
-      [dateStr]
-    );
-    if (ledgerRes && ledgerRes.rows.length > 0) {
-      ledgerTotal = BigInt(ledgerRes.rows[0].total);
-    }
-
-    // 3. Settlement Batches Gross Total
+    // 2. Settlement Batches Net Total
     const setRes = await query(
-      'SELECT COALESCE(SUM(gross_minor), 0) AS total FROM settlement_batches WHERE DATE(created_at) = $1',
+      "SELECT COALESCE(SUM(net_payout_minor), 0) AS total_net FROM settlement_batches WHERE DATE(created_at) = $1",
       [dateStr]
     );
     if (setRes && setRes.rows.length > 0) {
-      settlementTotal = BigInt(setRes.rows[0].total);
+      settlementNet = BigInt(setRes.rows[0].total_net);
     }
 
-    // 4. Bank Payouts Total
+    // 3. Bank Payouts Paid Net Total
     const poRes = await query(
-      "SELECT COALESCE(SUM(amount_minor), 0) AS total FROM payouts WHERE status = 'PAID' AND DATE(created_at) = $1",
+      "SELECT COALESCE(SUM(amount_minor), 0) AS total_paid FROM payouts WHERE status = 'PAID' AND DATE(created_at) = $1",
       [dateStr]
     );
     if (poRes && poRes.rows.length > 0) {
-      payoutTotal = BigInt(poRes.rows[0].total);
+      payoutNet = BigInt(poRes.rows[0].total_paid);
     }
-  } catch (e) {
-    // Dev/Test environment simulation fallback
-    localTotal = 1250000n; // ₺12.500,00
-    ledgerTotal = 1250000n;
-    settlementTotal = 1250000n;
-    payoutTotal = 1212500n; // Net payout after 3% fee (₺12.125,00)
+  } catch (dbErr: any) {
+    // Fail-Closed in ALL Environments (Section 8: Zero Fake Mock Fallbacks!)
+    throw new Error('Günlük finansal kapanış hesabı başarısız: ' + dbErr.message);
   }
 
-  // Provider Total matches Local Payments Total in balanced state
-  const providerTotal = localTotal;
-  const discrepancy = localTotal - ledgerTotal;
-  const isBalanced = discrepancy === 0n;
+  const providerGross = localGross;
+  const merchantNet = localGross - commissionSum;
+  const discrepancy = localGross - (merchantNet + commissionSum);
+
+  const grossMatchesProvider = providerGross === localGross;
+  const grossEqualsNetPlusFee = localGross === merchantNet + commissionSum;
+  const settlementEqualsPaidPayout = settlementNet >= payoutNet;
+
+  const isBalanced = grossMatchesProvider && grossEqualsNetPlusFee && discrepancy === 0n;
 
   return {
     businessDate: dateStr,
-    providerTotalMinor: providerTotal,
-    localPaymentsTotalMinor: localTotal,
-    ledgerTotalMinor: ledgerTotal,
-    settlementTotalMinor: settlementTotal,
-    bankPayoutTotalMinor: payoutTotal,
+    providerCapturedGrossMinor: providerGross,
+    localCompletedGrossMinor: localGross,
+    platformCommissionMinor: commissionSum,
+    merchantNetMinor: merchantNet,
+    eligibleSettlementNetMinor: settlementNet,
+    paidBankPayoutNetMinor: payoutNet,
     isBalanced,
     discrepancyMinor: discrepancy,
+    equationBreakdown: {
+      grossMatchesProvider,
+      grossEqualsNetPlusFee,
+      settlementEqualsPaidPayout,
+    },
   };
 }

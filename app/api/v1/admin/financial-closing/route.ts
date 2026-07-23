@@ -18,14 +18,16 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         businessDate: closing.businessDate,
-        providerTotalMinor: closing.providerTotalMinor.toString(),
-        localPaymentsTotalMinor: closing.localPaymentsTotalMinor.toString(),
-        ledgerTotalMinor: closing.ledgerTotalMinor.toString(),
-        settlementTotalMinor: closing.settlementTotalMinor.toString(),
-        bankPayoutTotalMinor: closing.bankPayoutTotalMinor.toString(),
+        providerCapturedGrossMinor: closing.providerCapturedGrossMinor.toString(),
+        localCompletedGrossMinor: closing.localCompletedGrossMinor.toString(),
+        platformCommissionMinor: closing.platformCommissionMinor.toString(),
+        merchantNetMinor: closing.merchantNetMinor.toString(),
+        eligibleSettlementNetMinor: closing.eligibleSettlementNetMinor.toString(),
+        paidBankPayoutNetMinor: closing.paidBankPayoutNetMinor.toString(),
         isBalanced: closing.isBalanced,
         discrepancyMinor: closing.discrepancyMinor.toString(),
-        equationFormula: 'Provider Total = Local Payments Total = Ledger Total = Settlement Total',
+        equationFormula: 'Provider Gross = Local Gross = Merchant Net + Platform Commission',
+        equationBreakdown: closing.equationBreakdown,
       },
     });
   } catch (error: any) {

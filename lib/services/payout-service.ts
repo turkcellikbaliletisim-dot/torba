@@ -30,7 +30,7 @@ export function validateTurkishIban(iban: string): boolean {
 }
 
 /**
- * Executes Bank EFT/FAST Payout Transfer for Merchant Settlement Batch
+ * Executes Bank EFT/FAST Payout Transfer for Merchant Settlement Batch (v8.0.0 Section 11)
  */
 export async function executeBankPayout(params: ExecutePayoutParams): Promise<PayoutResult> {
   const pool = getDbPool();
@@ -76,7 +76,7 @@ export async function executeBankPayout(params: ExecutePayoutParams): Promise<Pa
 
     // Lock Settlement Batch Record FOR UPDATE
     const batchRes = await client.query(
-      'SELECT id, status, net_payout_minor FROM settlement_batches WHERE id = $1 FOR UPDATE',
+      'SELECT id, merchant_id, status, net_payout_minor FROM settlement_batches WHERE id = $1 FOR UPDATE',
       [params.settlementBatchId]
     );
 
@@ -87,6 +87,20 @@ export async function executeBankPayout(params: ExecutePayoutParams): Promise<Pa
     }
 
     const dbBatch = batchRes.rows[0];
+
+    // Merchant Ownership & Amount Invariant Check (Section 11)
+    if (dbBatch.merchant_id !== params.merchantId) {
+      await client.query('ROLLBACK');
+      client.release();
+      return { success: false, status: 'FAILED', errorMessage: 'Hakediş batch işletme ID uyuşmazlığı.' };
+    }
+
+    if (BigInt(dbBatch.net_payout_minor) !== params.amountMinor) {
+      await client.query('ROLLBACK');
+      client.release();
+      return { success: false, status: 'FAILED', errorMessage: 'Hakediş batch net tutar uyuşmazlığı.' };
+    }
+
     if (dbBatch.status === 'PAID') {
       await client.query('ROLLBACK');
       client.release();
