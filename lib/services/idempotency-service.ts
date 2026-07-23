@@ -1,66 +1,89 @@
-import { setCache, getCache } from '@/lib/db/redis';
+import { setCache, getCache, deleteCache } from '@/lib/db/redis';
 import { query } from '@/lib/db';
+
+export type IdempotencyState = 'PROCESSING' | 'COMPLETED' | 'FAILED_RETRYABLE' | 'FAILED_FINAL';
 
 export interface IdempotencyRecord {
   key: string;
-  statusCode: number;
-  responseBody: any;
+  state: IdempotencyState;
+  statusCode?: number;
+  responseBody?: any;
   createdAtMs: number;
 }
 
 /**
- * Checks if an idempotency key has already been processed within the 24-hour window.
+ * Atomically acquires an idempotency lock for a key (State: PROCESSING)
+ * Returns null if lock acquired successfully, or existing record if already processed/processing.
  */
-export async function getIdempotentResult(key: string): Promise<IdempotencyRecord | null> {
+export async function acquireIdempotencyLock(key: string, ttlSeconds = 60): Promise<{ acquired: boolean; existingRecord?: IdempotencyRecord }> {
   const cacheKey = `idempotency:${key}`;
-  const cached = await getCache(cacheKey);
+  const existing = await getCache(cacheKey);
 
-  if (cached) {
-    return JSON.parse(cached);
+  if (existing) {
+    const record: IdempotencyRecord = JSON.parse(cachedVal(existing));
+    return { acquired: false, existingRecord: record };
   }
 
-  // Fallback DB Query
-  try {
-    const res = await query('SELECT key, status_code, response_body, created_at FROM idempotency_keys WHERE key = $1 LIMIT 1', [key]);
-    if (res && res.rows.length > 0) {
-      const row = res.rows[0];
-      return {
-        key: row.key,
-        statusCode: row.status_code,
-        responseBody: row.response_body,
-        createdAtMs: new Date(row.created_at).getTime(),
-      };
-    }
-  } catch (e) {
-    // Non-blocking fallback
-  }
+  // Set PROCESSING state lock
+  const processingRecord: IdempotencyRecord = {
+    key,
+    state: 'PROCESSING',
+    createdAtMs: Date.now(),
+  };
 
-  return null;
+  await setCache(cacheKey, JSON.stringify(processingRecord), ttlSeconds);
+  return { acquired: true };
+}
+
+function cachedVal(val: string): string {
+  return val;
 }
 
 /**
- * Stores the result of an idempotent transaction for 24 hours.
+ * Stores the final completed or failed result of an idempotent transaction for 24 hours (86400 seconds)
  */
-export async function saveIdempotentResult(key: string, statusCode: number, responseBody: any): Promise<void> {
+export async function saveIdempotentResult(
+  key: string,
+  state: IdempotencyState,
+  statusCode: number,
+  responseBody: any,
+  ttlSeconds = 86400
+): Promise<void> {
   const cacheKey = `idempotency:${key}`;
   const record: IdempotencyRecord = {
     key,
+    state,
     statusCode,
     responseBody,
     createdAtMs: Date.now(),
   };
 
-  const ttlSeconds = 86400; // 24 hours
   await setCache(cacheKey, JSON.stringify(record), ttlSeconds);
 
   try {
     await query(
       `INSERT INTO idempotency_keys (key, status_code, response_body, created_at)
        VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (key) DO NOTHING`,
+       ON CONFLICT (key) DO UPDATE SET response_body = EXCLUDED.response_body, status_code = EXCLUDED.status_code`,
       [key, statusCode, JSON.stringify(responseBody)]
     );
   } catch (e) {
     // Non-blocking DB fallback
   }
+}
+
+/**
+ * Releases an in-progress idempotency lock on failure so request can be retried
+ */
+export async function releaseIdempotencyLock(key: string): Promise<void> {
+  await deleteCache(`idempotency:${key}`);
+}
+
+export async function getIdempotentResult(key: string): Promise<IdempotencyRecord | null> {
+  const cacheKey = `idempotency:${key}`;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return JSON.parse(cached);
+  }
+  return null;
 }

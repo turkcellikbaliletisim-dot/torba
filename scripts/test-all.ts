@@ -6,9 +6,12 @@ import { checkRateLimitAsync } from '../lib/middleware/rate-limit';
 import { signSessionToken, verifySessionToken } from '../lib/auth/jwt';
 import { verifyWebhookSignature } from '../lib/services/payment-gateway';
 import { getIdempotentResult, saveIdempotentResult } from '../lib/services/idempotency-service';
+import { defaultPaymentProvider } from '../lib/services/payment-provider-adapter';
+import { hasPermission } from '../lib/auth/rbac';
+import { requestDualApproval, approveBySecondAdmin } from '../lib/services/approval-service';
 import crypto from 'crypto';
 
-console.log('🧪 Running Full TORBAA Automated Production Test Suite...\n');
+console.log('🧪 Running Full TORBAA Master Production Test Suite...\n');
 
 let passedTests = 0;
 let totalTests = 0;
@@ -103,8 +106,8 @@ async function runTests() {
   const blockedRl = await checkRateLimitAsync(rlKey, 3, 60);
   assert(blockedRl.allowed === false, 'checkRateLimitAsync: Blocks request after reaching limit');
 
-  // 6. JOSE JWT Authentication Tests
-  console.log('\n--- 6. JOSE JWT Authentication Tests ---');
+  // 6. JOSE JWT Authentication & Permission RBAC Tests
+  console.log('\n--- 6. JOSE JWT Authentication & Permission RBAC Tests ---');
   const sessionJwt = await signSessionToken({
     userId: 'u-jwt-1',
     phone: '5321112233',
@@ -114,15 +117,37 @@ async function runTests() {
   const decodedSession = await verifySessionToken(sessionJwt);
   assert(decodedSession?.userId === 'u-jwt-1' && decodedSession?.role === 'ADMIN', 'signSessionToken/verifySessionToken: Valid HS256 JWT verified');
 
-  // 7. Real Idempotency Lock & Storage Tests
-  console.log('\n--- 7. Real Idempotency Lock & Storage Tests ---');
+  assert(hasPermission('ADMIN', 'refund.approve') === true, 'hasPermission: Admin has refund.approve permission');
+  assert(hasPermission('CUSTOMER', 'refund.approve') === false, 'hasPermission: Customer does not have refund.approve permission');
+
+  // 7. Payment Provider Adapter & Settlement Calculation Tests
+  console.log('\n--- 7. Payment Provider Adapter & Settlement Calculation Tests ---');
+  const settlement = defaultPaymentProvider.calculateSettlement(10000n, 300); // ₺100,00 - %3 = ₺97,00 net
+  assert(settlement.commissionAmountMinor === 300n, 'calculateSettlement: 3% commission on ₺100 = ₺3,00');
+  assert(settlement.netPayoutMinor === 9700n, 'calculateSettlement: Net merchant payout = ₺97,00');
+
+  // 8. 4-Eye Approval (Çift Onay) Engine Tests
+  console.log('\n--- 8. 4-Eye Approval (Çift Onay) Engine Tests ---');
+  const dualAppr = await requestDualApproval({
+    actionType: 'HIGH_VALUE_REFUND',
+    requestedByUserId: 'admin-1',
+    amountMinor: 1500000n, // ₺15.000 (Above ₺10.000 threshold)
+    payload: { paymentId: 'pay-999' },
+  });
+  assert(dualAppr.requiresSecondApproval === true, 'requestDualApproval: High-value refund requires 2nd admin approval');
+
+  const sameAdminAppr = await approveBySecondAdmin(dualAppr.approvalRecord.id, 'admin-1');
+  assert(sameAdminAppr.success === false, 'approveBySecondAdmin: Prevents 1st admin from giving 2nd approval (4-Eye Principle)');
+
+  // 9. Real Idempotency Lock & Storage Tests
+  console.log('\n--- 9. Real Idempotency Lock & Storage Tests ---');
   const ik = `idempotent-test-key-${Date.now()}`;
-  await saveIdempotentResult(ik, 200, { paymentId: 'pay-999', status: 'SUCCESS' });
+  await saveIdempotentResult(ik, 'COMPLETED', 200, { paymentId: 'pay-999', status: 'SUCCESS' });
   const retrievedIdempotency = await getIdempotentResult(ik);
   assert(retrievedIdempotency?.responseBody?.paymentId === 'pay-999', 'saveIdempotentResult/getIdempotentResult: Idempotency lock stored and retrieved');
 
-  // 8. HMAC Webhook Signature Tests
-  console.log('\n--- 8. HMAC Webhook Signature Tests ---');
+  // 10. HMAC Webhook Signature Tests
+  console.log('\n--- 10. HMAC Webhook Signature Tests ---');
   const rawBody = '{"paymentId":"pay-123","status":"SUCCESS"}';
   const secretKey = process.env.PAYMENT_SECRET_KEY || 'dev_payment_secret_key_2026';
   const validSig = crypto.createHmac('sha256', secretKey).update(rawBody).digest('hex');
@@ -133,7 +158,7 @@ async function runTests() {
   const mismatchLenSig = verifyWebhookSignature(rawBody, 'short_invalid_sig');
   assert(mismatchLenSig === false, 'verifyWebhookSignature: Length mismatch handled safely without timingSafeEqual Exception');
 
-  console.log(`\n🎉 Test Suite Completed: ${passedTests}/${totalTests} tests passed!`);
+  console.log(`\n🎉 Master Production Test Suite Completed: ${passedTests}/${totalTests} tests passed!`);
 }
 
 runTests().catch((err) => {

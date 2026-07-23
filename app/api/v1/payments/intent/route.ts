@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
 
     // 3. Check Idempotency Key Lock (24h TTL)
     const existingResult = await getIdempotentResult(idempotencyKey);
-    if (existingResult) {
-      return NextResponse.json(existingResult.responseBody, { status: existingResult.statusCode });
+    if (existingResult && existingResult.responseBody) {
+      return NextResponse.json(existingResult.responseBody, { status: existingResult.statusCode || 200 });
     }
 
     // 4. Execute Payment Gateway Initialization
@@ -52,8 +52,8 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Save Idempotency Result
-    await saveIdempotentResult(idempotencyKey, 200, responseData);
+    // Save Idempotency Result with 'COMPLETED' state
+    await saveIdempotentResult(idempotencyKey, 'COMPLETED', 200, responseData);
 
     // Audit Log
     await logAuditEvent({
