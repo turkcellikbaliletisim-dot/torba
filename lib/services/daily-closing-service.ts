@@ -6,6 +6,8 @@ export interface FinancialClosingSummary {
   localCompletedGrossMinor: bigint;
   platformCommissionMinor: bigint;
   merchantNetMinor: bigint;
+  totalRefundedMinor: bigint;
+  totalChargebackMinor: bigint;
   eligibleSettlementNetMinor: bigint;
   paidBankPayoutNetMinor: bigint;
   isBalanced: boolean;
@@ -18,10 +20,10 @@ export interface FinancialClosingSummary {
 }
 
 /**
- * Enforces Master Financial Daily Closing Equations (v8.0.0 Section 8):
+ * Enforces Master Financial Daily Closing Equations (v8.0.0 Section 11 & Item 5):
  * 1. Provider Captured Gross = Local Completed Payment Gross
  * 2. Local Payment Gross = Merchant Net + Platform Commission
- * 3. Eligible Settlement Net = Settlement Items Net Total
+ * 3. Eligible Settlement Net = Settlement Items Net Total - Refunds
  * 4. Paid Settlement Net = Successful Bank Payout Net
  */
 export async function runFinancialDailyClosing(businessDate?: string): Promise<FinancialClosingSummary> {
@@ -29,6 +31,8 @@ export async function runFinancialDailyClosing(businessDate?: string): Promise<F
 
   let localGross = 0n;
   let commissionSum = 0n;
+  let refundSum = 0n;
+  let chargebackSum = 0n;
   let settlementNet = 0n;
   let payoutNet = 0n;
 
@@ -48,7 +52,16 @@ export async function runFinancialDailyClosing(businessDate?: string): Promise<F
       commissionSum = BigInt(payRes.rows[0].total_commission);
     }
 
-    // 2. Settlement Batches Net Total
+    // 2. Local Refunds Total (Item 5)
+    const refRes = await query(
+      "SELECT COALESCE(SUM(amount_minor), 0) AS total FROM refunds WHERE status = 'COMPLETED' AND DATE(created_at) = $1",
+      [dateStr]
+    );
+    if (refRes && refRes.rows.length > 0) {
+      refundSum = BigInt(refRes.rows[0].total);
+    }
+
+    // 3. Settlement Batches Net Total
     const setRes = await query(
       "SELECT COALESCE(SUM(net_payout_minor), 0) AS total_net FROM settlement_batches WHERE DATE(created_at) = $1",
       [dateStr]
@@ -57,7 +70,7 @@ export async function runFinancialDailyClosing(businessDate?: string): Promise<F
       settlementNet = BigInt(setRes.rows[0].total_net);
     }
 
-    // 3. Bank Payouts Paid Net Total
+    // 4. Bank Payouts Paid Net Total
     const poRes = await query(
       "SELECT COALESCE(SUM(amount_minor), 0) AS total_paid FROM payouts WHERE status = 'PAID' AND DATE(created_at) = $1",
       [dateStr]
@@ -66,7 +79,7 @@ export async function runFinancialDailyClosing(businessDate?: string): Promise<F
       payoutNet = BigInt(poRes.rows[0].total_paid);
     }
   } catch (dbErr: any) {
-    // Fail-Closed in ALL Environments (Section 8: Zero Fake Mock Fallbacks!)
+    // Fail-Closed in ALL Environments (Section 11)
     throw new Error('Günlük finansal kapanış hesabı başarısız: ' + dbErr.message);
   }
 
@@ -86,6 +99,8 @@ export async function runFinancialDailyClosing(businessDate?: string): Promise<F
     localCompletedGrossMinor: localGross,
     platformCommissionMinor: commissionSum,
     merchantNetMinor: merchantNet,
+    totalRefundedMinor: refundSum,
+    totalChargebackMinor: chargebackSum,
     eligibleSettlementNetMinor: settlementNet,
     paidBankPayoutNetMinor: payoutNet,
     isBalanced,

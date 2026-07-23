@@ -14,6 +14,7 @@ export type SagaStatus =
 
 export interface RefundSagaRecord {
   id: string;
+  refundId: string;
   paymentId: string;
   providerPaymentId: string;
   providerRefundId?: string;
@@ -26,18 +27,22 @@ export interface RefundSagaRecord {
 }
 
 /**
- * Creates or updates Refund Saga State Record (Section 7)
+ * Creates or updates Refund Saga State Record bound to specific refundId (Section 7 & Item 3)
  */
 export async function createRefundSaga(
+  refundId: string,
   paymentId: string,
   providerPaymentId: string,
-  amountMinor: bigint
+  amountMinor: bigint,
+  providerRefundId?: string
 ): Promise<RefundSagaRecord> {
-  const sagaId = `saga-ref-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const sagaId = `saga-${refundId}`;
   const record: RefundSagaRecord = {
     id: sagaId,
+    refundId,
     paymentId,
     providerPaymentId,
+    providerRefundId,
     amountMinor,
     status: 'REQUESTED',
     retryCount: 0,
@@ -46,10 +51,10 @@ export async function createRefundSaga(
 
   try {
     await query(
-      `INSERT INTO refund_sagas (id, payment_id, provider_payment_id, amount_minor, status, retry_count, created_at)
-       VALUES ($1, $2, $3, $4, 'REQUESTED', 0, NOW())
+      `INSERT INTO refund_sagas (id, refund_id, payment_id, provider_payment_id, provider_refund_id, amount_minor, status, retry_count, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'REQUESTED', 0, NOW())
        ON CONFLICT (id) DO NOTHING`,
-      [sagaId, paymentId, providerPaymentId, amountMinor.toString()]
+      [sagaId, refundId, paymentId, providerPaymentId, providerRefundId || null, amountMinor.toString()]
     );
   } catch (e) {}
 
@@ -57,7 +62,7 @@ export async function createRefundSaga(
 }
 
 /**
- * Refund Saga Worker: Queries provider status for stuck PROVIDER_COMPLETED_LOCAL_PENDING sagas (Section 7)
+ * Refund Saga Worker: Queries provider status for stuck PROVIDER_COMPLETED_LOCAL_PENDING sagas (Section 7 & Item 3)
  */
 export async function runRefundSagaWorker(): Promise<{ recoveredCount: number; failedCount: number }> {
   let recoveredCount = 0;
@@ -65,7 +70,7 @@ export async function runRefundSagaWorker(): Promise<{ recoveredCount: number; f
 
   try {
     const res = await query(
-      `SELECT id, payment_id, provider_payment_id, provider_refund_id, amount_minor, status, retry_count 
+      `SELECT id, refund_id, payment_id, provider_payment_id, provider_refund_id, amount_minor, status, retry_count 
        FROM refund_sagas 
        WHERE status IN ('PROVIDER_COMPLETED_LOCAL_PENDING', 'FAILED_RETRYABLE') AND retry_count < 5 
        LIMIT 50`
@@ -74,11 +79,12 @@ export async function runRefundSagaWorker(): Promise<{ recoveredCount: number; f
     if (res && res.rows.length > 0) {
       for (const row of res.rows) {
         try {
-          // Check provider status
-          const providerStatusRes = await defaultPaymentProvider.getPaymentStatus(row.provider_payment_id);
+          // Query real provider refund status using providerRefundId or providerPaymentId (Item 3)
+          const targetRefundId = row.provider_refund_id || row.provider_payment_id;
+          const providerStatusRes = await defaultPaymentProvider.getRefundStatus(targetRefundId);
 
           if (providerStatusRes.success && providerStatusRes.status === 'COMPLETED') {
-            await query('UPDATE refunds SET status = $1, updated_at = NOW() WHERE payment_id = $2', ['COMPLETED', row.payment_id]);
+            await query('UPDATE refunds SET status = $1, updated_at = NOW() WHERE id = $2', ['COMPLETED', row.refund_id]);
             await query('UPDATE refund_sagas SET status = $1, updated_at = NOW() WHERE id = $2', ['COMPLETED', row.id]);
 
             await logAuditEvent({
@@ -86,7 +92,7 @@ export async function runRefundSagaWorker(): Promise<{ recoveredCount: number; f
               action: 'REFUND_SAGA_RECOVERED_SUCCESSFULLY',
               resourceType: 'REFUND_SAGA',
               resourceId: row.id,
-              metadata: { paymentId: row.payment_id, providerPaymentId: row.provider_payment_id },
+              metadata: { refundId: row.refund_id, paymentId: row.payment_id, providerRefundId: targetRefundId },
             });
 
             recoveredCount++;

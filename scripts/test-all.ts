@@ -16,7 +16,7 @@ import { runPaymentRecoveryWorker, runRefundRecoveryWorker } from '../lib/servic
 import { validateTurkishIban, executeBankPayout } from '../lib/services/payout-service';
 import { maskPhone, maskSensitiveValue } from '../lib/services/logger-service';
 import { runFinancialDailyClosing } from '../lib/services/daily-closing-service';
-import { canTransitionPaymentStatus } from '../lib/services/payment-state-machine';
+import { canTransitionPaymentStatus, transitionPaymentStatus } from '../lib/services/payment-state-machine';
 import { createRefundSaga, runRefundSagaWorker } from '../lib/services/refund-saga';
 import { runLedgerIntegrityAudit } from '../lib/services/ledger-integrity-service';
 import crypto from 'crypto';
@@ -149,6 +149,9 @@ async function runTests() {
   const invalidTransition = canTransitionPaymentStatus('REFUNDED', 'COMPLETED');
   assert(invalidTransition === false, 'canTransitionPaymentStatus: Terminal state REFUNDED -> COMPLETED rejected');
 
+  const stateTxnRes = await transitionPaymentStatus('pay-999999', 'COMPLETED');
+  assert(stateTxnRes.success === false, 'transitionPaymentStatus: Handles missing payment ID cleanly in single DB txn');
+
   const settlement = defaultPaymentProvider.calculateSettlement(10000n, 300); // ₺100,00 - %3 = ₺97,00 net
   assert(settlement.commissionAmountMinor === 300n, 'calculateSettlement: 3% commission on ₺100 = ₺3,00');
   assert(settlement.netPayoutMinor === 9700n, 'calculateSettlement: Net merchant payout = ₺97,00');
@@ -206,8 +209,8 @@ async function runTests() {
     assert(true, 'runFinancialDailyClosing: Fail-closed guard triggers cleanly when DB is offline');
   }
 
-  const saga = await createRefundSaga('pay-101', 'cg-pay-101', 5000n);
-  assert(saga.status === 'REQUESTED', 'createRefundSaga: Creates refund saga record with REQUESTED status');
+  const saga = await createRefundSaga('ref-101', 'pay-101', 'cg-pay-101', 5000n, 'cg-ref-101');
+  assert(saga.status === 'REQUESTED' && saga.refundId === 'ref-101', 'createRefundSaga: Creates refund saga record bound to specific refundId');
 
   const sagaWorker = await runRefundSagaWorker();
   assert(typeof sagaWorker.recoveredCount === 'number', 'runRefundSagaWorker: Scans stuck sagas and executes exponential backoff recovery');

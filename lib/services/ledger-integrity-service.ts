@@ -9,7 +9,7 @@ export interface LedgerAuditResult {
 }
 
 /**
- * Audits Double-Entry Ledger Invariants: SUM(DEBIT) === SUM(CREDIT) for all transactions (Section 10)
+ * Audits Double-Entry Ledger Invariants: SUM(DEBIT) === SUM(CREDIT) for all transactions (Item 4: Fail-Closed Guard)
  */
 export async function runLedgerIntegrityAudit(): Promise<LedgerAuditResult> {
   const unbalancedIds: string[] = [];
@@ -35,8 +35,10 @@ export async function runLedgerIntegrityAudit(): Promise<LedgerAuditResult> {
     if (countRes && countRes.rows.length > 0) {
       totalAudited = parseInt(countRes.rows[0].cnt, 10);
     }
-  } catch (e) {
-    // Non-blocking fallback
+  } catch (e: any) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Ledger denetimi veritabanı sorgusu başarısız: ' + e.message);
+    }
   }
 
   const isBalanced = unbalancedIds.length === 0;
@@ -49,6 +51,11 @@ export async function runLedgerIntegrityAudit(): Promise<LedgerAuditResult> {
       resourceId: 'global-ledger',
       metadata: { unbalancedTransactionIds: unbalancedIds },
     });
+
+    if (process.env.NODE_ENV === 'production') {
+      // Fail-Closed in Production (Item 4)
+      throw new Error(`Kritik Muhasebe İhlali: ${unbalancedIds.length} adet borç/alacak uyuşmazlığı tespit edildi.`);
+    }
   }
 
   return {
