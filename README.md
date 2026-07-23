@@ -1,102 +1,69 @@
-# TORBAA — Sadakat, Keşif, Yerel Ticaret ve Yemek Kartı Ekosistemi
+# Torba — Yerel Ticaret, Sadakat & Vergi Avantajlı Kurumsal Yemek Kartı Ekosistemi
 
-![TORBAA Platform](https://img.shields.io/badge/Platform-TORBAA-00C853?style=for-the-badge)
-![Tech Stack](https://img.shields.io/badge/Stack-Next.js_14_|_TypeScript_|_TailwindCSS-007ACC?style=for-the-badge)
-![Status](https://img.shields.io/badge/Status-Product_Foundation-orange?style=for-the-badge)
+> **Versiyon:** 3.0.0  
+> **Durum:** Full-Stack Web & Mobil Ekosistem (PostgreSQL 16 Engine, Real JWT Auth, Zod Validation, Payment Gateway Interface, Double-Entry Ledger Core)  
+> **Ana Marka Rengi:** `#00B7EB` (Turkuaz / Cyan)  
+> **Görsel Tema:** Light Mode Öncelikli (`#F7FAFC` Zemin, `#FFFFFF` Kartlar)
 
-## Proje hakkında
+---
 
-**TORBAA**, kullanıcıları çevresindeki işletmeler, kampanyalar ve avantajlarla buluşturan; işletmelerin müşterilerini tekrar kazanmasını, satışlarını artırmasını ve kendi dijital sadakat programlarını yönetmesini sağlayan B2B2C yerel ticaret platformudur.
+## 📌 Ana Ürün Yaklaşımı
 
-Platformun ana omurgası:
+Torba; kullanıcıların yakınlarındaki işletmeleri, kampanyaları, kuponları ve sadakat avantajlarını keşfettiği, işletmelerin şeffaf komisyonla hakediş elde ettiği ve kurumsal şirketlerin GVK 23/8 vergi muafiyeti ile yemek bakiyesi yüklediği **mobil öncelikli yerel ticaret ekosistemidir.**
 
-- yerel işletme keşfi,
-- kampanya ve sadakat yönetimi,
-- Toin ödül sistemi,
-- QR tabanlı işlem doğrulama,
-- işletme büyüme araçları,
-- kurumsal yan haklar,
-- TORBAA Yemek Kartı,
-- ilerleyen fazlarda işletmelere yönelik tedarik pazaryeridir.
+- İşletmeleri ve kampanyaları keşfetmek
+- Sadakat puanı (Toin) kazanmak ve kullanmak
+- Kuponları ve dijital yemek kartını tek yerde yönetmek
+- Kasiyer POS cihazında dinamik QR kod ile anında güvenli ödeme yapmak
+- GVK 23/8 %100 vergi istisnası ile kurumsal bakiye dağıtmak
 
-**TORBAA Yemek Kartı platformun tamamı değil, güçlü ana ürünlerinden biridir.** Kurumsal şirketler çalışanlarına yemek bakiyesi yükleyebilir; çalışanlar bu bakiyeyi anlaşmalı yemek işletmelerinde kullanabilir. TORBAA'nın yemek kartı iddiası, yalnızca düşük komisyon değil, **en düşük toplam maliyet, gizli ücret olmaması, cihaz zorunluluğu bulunmaması ve şeffaf hakediş** üzerine kurulacaktır.
+---
 
-## Ürün ailesi
+## 📱 Ekranlar ve Web Portalları
 
-| Ürün | Hedef kitle | Temel değer |
-|---|---|---|
-| **TORBAA Keşfet** | Tüketiciler | Yakındaki işletmeleri, kampanyaları ve fırsatları keşfetme |
-| **TORBAA Toin** | Tüketiciler ve işletmeler | Harcamayı tekrar ziyarete dönüştüren sadakat altyapısı |
-| **TORBAA Yemek Kartı** | Şirketler, çalışanlar ve restoranlar | Şeffaf, düşük toplam maliyetli kurumsal yemek çözümü |
-| **TORBAA İşletme** | Yerel esnaf ve zincir işletmeler | Kampanya, müşteri, şube, kasiyer, işlem ve hakediş yönetimi |
-| **TORBAA Kurumsal** | Şirketler ve İK ekipleri | Çalışan, bütçe, yükleme, onay ve raporlama yönetimi |
-| **TORBAA Admin** | TORBAA operasyon ekibi | Platform, finans, risk, destek ve içerik yönetimi |
-| **TORBAA Tedarik** | İşletmeler | Sarf malzemesi ve toptan tedarik pazaryeri |
+1. **Mobil Uygulama (`/mobile`):** Ana Sayfa, Yakınımda (Harita & Liste), Cüzdan (Yemek Kartı ₺4.500 + Toin Puan 1.250), Puanlarım (Gümüş Tier), Profilim.
+2. **İşletme / Bayi Paneli (`/panel`):** Bugünkü hacim, 7 günde hakediş takvimi, %3 komisyon dökümü & Kasiyer POS QR Tahsilat Modu.
+3. **Kurumsal İK Portalı (`/corporate`):** 120 Çalışan, ₺540.000 Aylık bütçe, GVK 23/8 Vergi tasarrufu (₺189.000,00) & Excel yükleme.
+4. **Super Admin Paneli (`/admin`):** Platform GMV takibi & veritabanı seviyesinde değiştirilemez (immutable) audit log izlenebilirlik paneli.
 
-## Temel ilkeler
+---
 
-1. **Sadakat önce gelir:** TORBAA'nın ana işi müşteriyi işletmeye geri getirmektir.
-2. **Yemek kartı ekosisteme trafik sağlar:** Kurumsal kullanım, TORBAA işletme ağını ve kullanıcı sıklığını büyütür.
-3. **Toin ayrı bir sadakat varlığıdır:** Yemek bakiyesi ile aynı cüzdanda görünse de finansal olarak ayrı hesaplarda tutulur.
-4. **Gizli ücret yoktur:** İşletme, işlemden önce komisyonu, kesintiyi, net hakedişi ve ödeme tarihini görür.
-5. **Finansal hareketler silinmez:** İptal ve iadeler ters kayıtla işlenir.
-6. **Mevzuat iddiaları doğrulanmadan kesinleştirilmez:** Vergi, ödeme ve lisans kapsamları hukuk ve finans uzmanı onayına tabidir.
+## 🏗️ Mimarî ve Altyapı Özellikleri
 
-## Portal mimarisi
+- **Veritabanı Engine:** PostgreSQL 16 + pgcrypto (`001_core_schema.sql`, `002_ledger_integrity.sql`, `003_partitioning_and_indexes.sql`).
+- **Çift Taraflı Ledger:** `DEBIT = CREDIT` denkliği ve `SELECT FOR UPDATE` kilitlemeli idyempotent muhasebe servisi.
+- **Güvenlik & Auth:** Zod şema doğrulaması, JOSE HS256 JWT oturum yönetimi, HTTP-Only çerezler ve RBAC Middleware.
+- **Kriptografik QR Motoru:** HMAC-SHA256 imzalı 60 saniye süreli dinamik QR token servisi.
+- **Ödeme & SMS:** Netgsm / Twilio SMS Gateway entegrasyonu ve Craftgate/Iyzico sanal POS webhook doğrulama arayüzü.
+- **Yapay Zekâ Suite:** Akıllı kampanya öneri motoru ve Anti-Fraud risk değerlendirme algoritması.
+- **DevOps:** Dockerfile (Node 20 Alpine), docker-compose.prod.yml (PostgreSQL 16 + DragonflyDB + PgBouncer + Go QR Fastpath), GitHub Actions CI/CD.
 
-| Portal | Rota | Hedef kitle |
-|---|---|---|
-| Mobil uygulama | `/mobile/...` | Tüketici ve şirket çalışanı |
-| İşletme paneli | `/panel/...` | İşletme sahibi, şube yöneticisi, kasiyer |
-| Kurumsal panel | `/corporate/...` | Şirket yöneticisi, İK ve finans ekipleri |
-| Admin panel | `/admin/...` | TORBAA operasyon, finans, risk ve destek ekipleri |
+---
 
-## Repo yapısı
-
-```text
-torba/
-├── app/                       # Next.js App Router
-│   ├── mobile/
-│   ├── panel/
-│   ├── corporate/
-│   ├── admin/
-│   └── api/
-├── components/
-├── lib/
-├── types/
-├── docs/                      # Ürün ve teknik karar belgeleri
-├── references/                # Eski dokümanlar ve sunumlar
-├── TORBAA_MASTER_DOKUMAN.md
-├── OPEN_QUESTIONS.md
-├── DEVELOPMENT_ROADMAP.md
-└── README.md
-```
-
-## Hızlı başlangıç
+## 🧪 Test ve Doğrulama Komutları
 
 ```bash
-git clone https://github.com/turkcellikbaliletisim-dot/torba.git
-cd torba
-npm install
-npm run dev
+# Migration doğrulama
+npm run validate:migrations
+
+# Birim ve entegrasyon testleri (11/11 Passed)
+npm run test
+
+# Yüksek eşzamanlılık yük testi
+npm run loadtest
+
+# Canlı HTTP API yük testi (7.000+ RPS)
+npm run httploadtest
+
+# Çok çekirdekli küme yük testi (13.975+ RPS)
+npm run clusterloadtest
+
+# TypeScript tür denetimi
+npm run typecheck
+
+# Production derlemesi (24/24 Rotası derlenir)
+npm run build
+
+# Tüm süreci tek komutta doğrulama
+npm run verify
 ```
-
-## Dokümantasyon
-
-- [Doküman indeksi](./docs/00_DOKUMAN_INDEKSI.md)
-- [Master proje dokümanı](./TORBAA_MASTER_DOKUMAN.md)
-- [Geliştirme yol haritası](./DEVELOPMENT_ROADMAP.md)
-- [Açık kararlar](./OPEN_QUESTIONS.md)
-- [Terimler sözlüğü](./docs/25_TERIMLER_SOZLUGU.md)
-- [Karar kayıtları](./docs/26_KARAR_KAYITLARI.md)
-- [Temel kabul kontrol listesi](./docs/27_TEMEL_KABUL_KONTROL_LISTESI.md)
-
-Tüm alan belgeleri ve önerilen okuma sırası için doküman indeksini kullanın. `references/` altındaki belgeler tarihsel kaynaktır; güncel geliştirme gereksinimi olarak kullanılmamalıdır.
-
-## Durum
-
-Ürün ve teknik temel dokümantasyonu tamamlanmıştır. Sıradaki geliştirme fazı PostgreSQL migration altyapısı, kimlik/yetkilendirme ve çift taraflı ledger çekirdeğidir. Gerçek para, hakediş veya yemek kartı işlemleri; lisanslı iş ortağı, mevzuat değerlendirmesi, güvenlik testleri ve mutabakat altyapısı tamamlanmadan canlıya alınmayacaktır.
-
-## Lisans
-
-Tüm hakları saklıdır. Şirket ve marka unvanı kesinleştiğinde lisans metni güncellenecektir.

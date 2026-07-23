@@ -1,26 +1,45 @@
 import { NextResponse } from 'next/server';
+import { SendOtpSchema } from '@/lib/validation/schemas';
+import { sendSms } from '@/lib/services/sms-service';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { phone } = body;
+    const rawBody = await request.json();
 
-    if (!phone || typeof phone !== 'string' || phone.length < 10) {
+    // 1. Zod Input Schema Validation
+    const validation = SendOtpSchema.safeParse(rawBody);
+    if (!validation.success) {
+      const errorMsg = validation.error.issues?.[0]?.message || 'Geçersiz telefon numarası.';
       return NextResponse.json(
-        { success: false, error: 'Geçersiz telefon numarası.' },
+        { success: false, error: errorMsg },
         { status: 400 }
       );
     }
 
-    // Standardized mock OTP response for dev environment
+    const { phone } = validation.data;
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 2. Real SMS Gateway Transmission
+    const smsResult = await sendSms({
+      toPhone: phone,
+      messageText: `TORBAA Doğrulama Kodunuz: ${otpCode}. Bu kodu kimseden paylaşmayın. (B002)`,
+    });
+
+    if (!smsResult.success) {
+      return NextResponse.json(
+        { success: false, error: smsResult.error || 'SMS gönderimi başarısız.' },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       message: 'OTP doğrulama kodu başarıyla gönderildi.',
       data: {
         phone,
         expiresInSeconds: 120,
-        // Development mode helper hint
-        devCodeHint: '123456',
+        provider: smsResult.provider,
+        devCodeHint: process.env.NODE_ENV !== 'production' ? otpCode : undefined,
       },
     });
   } catch (error) {
