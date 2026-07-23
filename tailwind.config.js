@@ -10,28 +10,29 @@ module.exports = {
       colors: {
         torba: {
           brand: {
-            50: '#F1FBFE',
-            100: '#DDF6FD',
-            500: '#00B7EB',
-            600: '#009BC8',
-            700: '#007DA3',
+            50: '#E0F7FC',
+            100: '#B8EEF9',
+            500: '#00B2E3', // Electric Cyan Blue from screenshot
+            600: '#0097C2',
+            700: '#007AA1',
           },
+          toin: {
+            bg: '#FFF9E6', // Warm Cream Yellow from screenshot
+            border: '#FEF08A',
+            text: '#854D0E',
+            gold: '#F59E0B',
+          },
+          coral: '#FF5722', // Bright Coral Orange (%20 İndirim badge)
+          navy: '#0B132B',  // Dark Midnight Navy (Hero Banner)
           neutral: {
-            50: '#F7FAFC',
-            100: '#EDF3F6',
-            200: '#DCE6EB',
-            400: '#9AAAB3',
-            600: '#647681',
-            800: '#263B46',
-            950: '#10212B',
+            50: '#F8FAFC',
+            100: '#F1F5F9',
+            200: '#E2E8F0',
+            400: '#94A3B8',
+            600: '#64748B',
+            800: '#1E293B',
+            950: '#0F172A',
           },
-          campaign: '#FF6B35',
-          points: '#F4B400',
-          premium: '#7B61FF',
-          success: '#16A56A',
-          warning: '#F4A62A',
-          error: '#E34D59',
-          info: '#2C7BE5',
         }
       },
       borderRadius: {
@@ -42,9 +43,9 @@ module.exports = {
         'torba-2xl': '24px',
       },
       boxShadow: {
-        'torba-card': '0 6px 20px rgba(16, 33, 43, 0.07)',
-        'torba-floating': '0 -8px 28px rgba(16, 33, 43, 0.10)',
-        'torba-modal': '0 20px 50px rgba(16, 33, 43, 0.16)',
+        'torba-card': '0 4px 16px rgba(15, 23, 42, 0.05)',
+        'torba-floating': '0 -6px 24px rgba(15, 23, 42, 0.08)',
+        'torba-modal': '0 20px 50px rgba(15, 23, 42, 0.16)',
       }
     },
   },
