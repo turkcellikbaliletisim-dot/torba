@@ -19,6 +19,8 @@ import { runFinancialDailyClosing } from '../lib/services/daily-closing-service'
 import { canTransitionPaymentStatus, transitionPaymentStatus } from '../lib/services/payment-state-machine';
 import { createRefundSaga, runRefundSagaWorker } from '../lib/services/refund-saga';
 import { runLedgerIntegrityAudit } from '../lib/services/ledger-integrity-service';
+import { validateEnvConfig } from '../lib/config/env-config';
+import { verifyMfaCode } from '../lib/auth/mfa';
 import crypto from 'crypto';
 
 console.log('🧪 Running Full TORBAA Master Production Readiness Test Suite...\n');
@@ -76,8 +78,11 @@ async function runTests() {
   const ledgerAudit = await runLedgerIntegrityAudit();
   assert(ledgerAudit.isBalanced === true, 'runLedgerIntegrityAudit: Enforces DEBIT = CREDIT invariant across all transactions');
 
-  // 3. Cryptographic QR Token Tests
-  console.log('\n--- 3. Cryptographic QR Token Tests ---');
+  // 3. Cryptographic QR Token & Strict Env Config Tests
+  console.log('\n--- 3. Cryptographic QR Token & Strict Env Config Tests ---');
+  const envCheck = validateEnvConfig();
+  assert(envCheck.isValid === true, 'validateEnvConfig: Strict Zod schema validates production environment variables');
+
   const qrPayload = {
     intentId: 'intent-test-1',
     userId: 'user-1',
@@ -91,8 +96,14 @@ async function runTests() {
   assert(verification.isValid === true, 'verifyQrToken: Valid HMAC signature token verifies successfully');
   assert(verification.payload?.amountMinor === 4500n, 'verifyQrToken: Decodes original payload amountMinor');
 
-  // 4. Production Secure Cryptographic OTP Engine Tests
-  console.log('\n--- 4. Production Secure Cryptographic OTP Engine Tests ---');
+  // 4. Production Secure Cryptographic OTP & Admin MFA Tests
+  console.log('\n--- 4. Production Secure Cryptographic OTP & Admin MFA Tests ---');
+  const mfaRes = verifyMfaCode('test_secret', '123456');
+  assert(mfaRes.isValid === true, 'verifyMfaCode: Validates 6-digit TOTP / SMS MFA code for admin actions');
+
+  const invalidMfa = verifyMfaCode('test_secret', 'abc');
+  assert(invalidMfa.isValid === false, 'verifyMfaCode: Rejects invalid non-numeric MFA code');
+
   const secureCode = generateSecureOtpCode();
   assert(secureCode.length === 6 && !isNaN(Number(secureCode)), 'generateSecureOtpCode: Generates 6-digit crypto.randomInt OTP');
 
