@@ -2,14 +2,15 @@ import { NextResponse } from 'next/server';
 import { tryGetAuthRuntime, type AuthRuntime } from '@/lib/auth/runtime';
 
 export type AuthRuntimeResult =
-  | { runtime: AuthRuntime; response?: never }
-  | { runtime?: never; response: NextResponse };
+  | { ok: true; runtime: AuthRuntime }
+  | { ok: false; response: NextResponse };
 
 export function resolveAuthRuntime(): AuthRuntimeResult {
   const runtime = tryGetAuthRuntime();
-  if (runtime) return { runtime };
+  if (runtime) return { ok: true, runtime };
 
   return {
+    ok: false,
     response: NextResponse.json(
       {
         success: false,
