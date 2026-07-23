@@ -1,10 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
   theme: {
     extend: {
       colors: {
@@ -46,7 +41,6 @@ module.exports = {
         'torba-floating': '0 -8px 28px rgba(16, 33, 43, 0.10)',
         'torba-modal': '0 20px 50px rgba(16, 33, 43, 0.16)',
       }
-    },
-  },
-  plugins: [],
-}
+    }
+  }
+};

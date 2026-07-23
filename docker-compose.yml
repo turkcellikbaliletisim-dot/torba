@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://torbaa_user:torbaa_password_2026@postgres:5432/torbaa_db
+      - REDIS_URL=redis://redis:6379
+      - QR_SECRET_KEY=torbaa_secure_qr_secret_key_2026_prod
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: torbaa_postgres
+    environment:
+      POSTGRES_USER: torbaa_user
+      POSTGRES_PASSWORD: torbaa_password_2026
+      POSTGRES_DB: torbaa_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/migrations/001_core_schema.sql:/docker-entrypoint-initdb.d/001_core_schema.sql
+      - ./database/migrations/002_ledger_integrity.sql:/docker-entrypoint-initdb.d/002_ledger_integrity.sql
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: torbaa_redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+volumes:
+  pgdata:
