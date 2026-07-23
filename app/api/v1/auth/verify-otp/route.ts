@@ -1,13 +1,26 @@
 import { NextResponse } from 'next/server';
 import { VerifyOtpSchema } from '@/lib/validation/schemas';
 import { signSessionToken } from '@/lib/auth/jwt';
+import { verifyOtpCode } from '@/lib/auth/otp-store';
 import { query } from '@/lib/db';
+import { checkRateLimit } from '@/lib/middleware/rate-limit';
 
 export async function POST(request: Request) {
   try {
+    // 1. Rate Limit Check
+    const clientIp = request.headers.get('x-forwarded-for') || '127.0.0.1';
+    const rateLimit = checkRateLimit(`verify-otp:${clientIp}`, 10, 60);
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Çok fazla hatalı deneme yapıldı. Lütfen biraz bekleyin.' },
+        { status: 429 }
+      );
+    }
+
     const rawBody = await request.json();
 
-    // 1. Zod Input Schema Validation
+    // 2. Zod Input Schema Validation
     const validation = VerifyOtpSchema.safeParse(rawBody);
     if (!validation.success) {
       const errorMsg = validation.error.issues?.[0]?.message || 'Geçersiz kod veya telefon.';
@@ -19,32 +32,51 @@ export async function POST(request: Request) {
 
     const { phone, code } = validation.data;
 
-    // Development mode bypass check or production verification
-    const isValidCode = code === '123456' || process.env.NODE_ENV !== 'production';
-
-    if (!isValidCode) {
+    // 3. Strict SHA-256 OTP Hash Verification (Max 3 attempts, 120s TTL)
+    const otpVerification = verifyOtpCode(phone, code);
+    if (!otpVerification.isValid) {
       return NextResponse.json(
-        { success: false, error: 'Doğrulama kodu hatalı veya süresi dolmuş.' },
+        { success: false, error: otpVerification.error },
         { status: 401 }
       );
     }
 
-    // 2. Real PostgreSQL User Lookup with Fallback
-    let userId = 'user-mock-123';
-    let fullName = 'Ahmet Yılmaz';
+    // 4. Real PostgreSQL User Lookup & Auto-Registration
+    let userId = `u-${phone}`;
+    let fullName = 'Yeni Kullanıcı';
     let role: 'CUSTOMER' | 'ADMIN' | 'MERCHANT' | 'CORPORATE_HR' = 'CUSTOMER';
 
     try {
-      const dbRes = await query('SELECT id, full_name, phone FROM users WHERE phone = $1 LIMIT 1', [phone]);
-      if (dbRes && dbRes.rows.length > 0) {
-        userId = dbRes.rows[0].id;
-        fullName = dbRes.rows[0].full_name;
+      const userResult = await query(
+        'SELECT id, full_name, phone FROM users WHERE phone = $1 LIMIT 1',
+        [phone]
+      );
+
+      if (userResult && userResult.rows.length > 0) {
+        userId = userResult.rows[0].id;
+        fullName = userResult.rows[0].full_name;
+      } else {
+        // User not found -> Auto-register in PostgreSQL
+        const newUserId = `u-${Date.now()}`;
+        await query(
+          'INSERT INTO users (id, full_name, phone, status) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+          [newUserId, 'Yeni Kullanıcı', phone, 'ACTIVE']
+        );
+        userId = newUserId;
+
+        // Auto-create initial wallets in PostgreSQL
+        await query(
+          `INSERT INTO wallets (id, owner_type, owner_id, wallet_type, currency) 
+           VALUES ($1, 'USER', $2, 'MEAL', 'TRY'), ($3, 'USER', $2, 'TOIN', 'TOIN') 
+           ON CONFLICT DO NOTHING`,
+          [`w-meal-${userId}`, userId, `w-toin-${userId}`]
+        );
       }
     } catch (dbErr) {
-      // Postgres pool fallback during build/dev
+      // PostgreSQL pool fallback for dev/build environment
     }
 
-    // 3. Real Cryptographic Session Token Generation (jose HS256)
+    // 5. Generate Real JOSE HS256 JWT Token
     const token = await signSessionToken({
       userId,
       phone,
@@ -64,7 +96,7 @@ export async function POST(request: Request) {
           role,
           tier: 'SILVER',
           toinBalance: 1250,
-          mealBalanceMinor: 450000, // ₺4.500,00
+          mealBalanceMinor: 450000,
         },
       },
     });

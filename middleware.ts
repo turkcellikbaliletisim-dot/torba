@@ -9,12 +9,24 @@ const JWT_SECRET_KEY = new TextEncoder().encode(
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Protected Portal Rotes
-  const isAdminRoute = pathname.startsWith('/admin');
-  const isPanelRoute = pathname.startsWith('/panel');
-  const isCorporateRoute = pathname.startsWith('/corporate');
+  // Unprotected / Public Auth endpoints
+  if (
+    pathname.startsWith('/api/v1/auth') ||
+    pathname.startsWith('/api/v1/health') ||
+    pathname.startsWith('/api/v1/mobile/merchants') ||
+    pathname.startsWith('/api/v1/mobile/campaigns') ||
+    pathname === '/mobile'
+  ) {
+    return NextResponse.next();
+  }
 
-  if (!isAdminRoute && !isPanelRoute && !isCorporateRoute) {
+  // Protected Routes
+  const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/api/v1/admin');
+  const isPanelRoute = pathname.startsWith('/panel') || pathname.startsWith('/api/v1/panel');
+  const isCorporateRoute = pathname.startsWith('/corporate') || pathname.startsWith('/api/v1/corporate');
+  const isProtectedMobileRoute = pathname.startsWith('/api/v1/mobile/wallet') || pathname.startsWith('/api/v1/qr');
+
+  if (!isAdminRoute && !isPanelRoute && !isCorporateRoute && !isProtectedMobileRoute) {
     return NextResponse.next();
   }
 
@@ -25,9 +37,8 @@ export async function middleware(request: NextRequest) {
   const token = cookieToken || bearerToken;
 
   if (!token) {
-    // Development bypass hint or redirect to login
-    if (process.env.NODE_ENV !== 'production') {
-      return NextResponse.next();
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ success: false, error: 'Oturum açmanız gerekmektedir. Token bulunamadı.' }, { status: 401 });
     }
     return NextResponse.redirect(new URL('/mobile', request.url));
   }
@@ -37,26 +48,44 @@ export async function middleware(request: NextRequest) {
     const userRole = payload.role as string;
 
     if (isAdminRoute && userRole !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Erişim Engellendi: Admin yetkisi gereklidir.' }, { status: 403 });
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ success: false, error: 'Erişim Engellendi: Admin yetkisi gereklidir.' }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL('/mobile', request.url));
     }
 
     if (isPanelRoute && userRole !== 'MERCHANT' && userRole !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Erişim Engellendi: İşletme yetkisi gereklidir.' }, { status: 403 });
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ success: false, error: 'Erişim Engellendi: İşletme yetkisi gereklidir.' }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL('/mobile', request.url));
     }
 
     if (isCorporateRoute && userRole !== 'CORPORATE_HR' && userRole !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Erişim Engellendi: Kurumsal İK yetkisi gereklidir.' }, { status: 403 });
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ success: false, error: 'Erişim Engellendi: Kurumsal İK yetkisi gereklidir.' }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL('/mobile', request.url));
     }
 
     return NextResponse.next();
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      return NextResponse.next();
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ success: false, error: 'Geçersiz veya süresi dolmuş oturum tokenı.' }, { status: 401 });
     }
     return NextResponse.redirect(new URL('/mobile', request.url));
   }
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/panel/:path*', '/corporate/:path*'],
+  matcher: [
+    '/admin/:path*',
+    '/panel/:path*',
+    '/corporate/:path*',
+    '/api/v1/admin/:path*',
+    '/api/v1/panel/:path*',
+    '/api/v1/corporate/:path*',
+    '/api/v1/mobile/wallet',
+    '/api/v1/qr/:path*',
+  ],
 };

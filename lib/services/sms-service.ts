@@ -1,6 +1,6 @@
 /**
  * TORBAA SMS Gateway Service
- * Integrates with Netgsm / Twilio SMS Providers.
+ * Uses Netgsm HTTP POST JSON API (Credentials in body, not URL query params).
  * Supports fallback to development console log when SMS credentials are not configured.
  */
 
@@ -26,20 +26,38 @@ export async function sendSms(options: SmsSendOptions): Promise<SmsSendResult> {
 
   if (SMS_PROVIDER === 'NETGSM' && NETGSM_USER && NETGSM_PASS) {
     try {
-      const netgsmUrl = `https://api.netgsm.com.tr/sms/send/get/?usercode=${NETGSM_USER}&password=${NETGSM_PASS}&gsmno=${cleanPhone}&message=${encodeURIComponent(options.messageText)}&msgheader=${NETGSM_HEADER}`;
-      const res = await fetch(netgsmUrl);
+      const payload = {
+        header: {
+          company: NETGSM_HEADER,
+          usercode: NETGSM_USER,
+          password: NETGSM_PASS,
+          type: '1:n',
+          msgheader: NETGSM_HEADER,
+        },
+        body: {
+          msg: options.messageText,
+          no: [cleanPhone],
+        },
+      };
+
+      const res = await fetch('https://api.netgsm.com.tr/sms/send/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
       const text = await res.text();
 
-      if (text.startsWith('00')) {
+      if (res.ok && text.includes('00')) {
         return {
           success: true,
-          messageId: text.split(' ')[1] || `netgsm-${Date.now()}`,
+          messageId: text.trim(),
           provider: 'NETGSM',
         };
       } else {
         return {
           success: false,
-          error: `Netgsm Hata Kodu: ${text}`,
+          error: `Netgsm HTTP Error: ${text}`,
           provider: 'NETGSM',
         };
       }
