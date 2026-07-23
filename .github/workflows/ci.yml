@@ -1,4 +1,4 @@
-name: TORBAA Master CI/CD Verification
+name: TORBAA Master Production CI/CD Pipeline
 
 on:
   push:
@@ -8,29 +8,63 @@ on:
 
 jobs:
   verify:
+    name: Validate Migrations, Lint, Typecheck, Test Suite & Production Build
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: torba_dev
+          POSTGRES_PASSWORD: torba_dev_password
+          POSTGRES_DB: torba_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20.x
+      - name: Setup Node.js Environment
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
           cache: 'npm'
 
-      - name: Install Dependencies
+      - name: Install Project Dependencies
         run: npm ci
 
-      - name: Validate SQL Migrations
+      - name: Validate Database SQL Migrations
         run: npm run validate:migrations
+        env:
+          DATABASE_URL: postgres://torba_dev:torba_dev_password@localhost:5432/torba_db
 
-      - name: TypeScript Strict Typecheck
+      - name: Execute Master Unit & Integration Test Suite
+        run: npm run test
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgres://torba_dev:torba_dev_password@localhost:5432/torba_db
+          REDIS_URL: redis://localhost:6379
+
+      - name: Verify TypeScript Types
         run: npm run typecheck
 
-      - name: Run Master Production Test Suite
-        run: npm run test
-
-      - name: Build Production Next.js Bundle
+      - name: Compile Next.js Production Build
         run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1

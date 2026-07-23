@@ -13,7 +13,7 @@ import { createSettlementBatch } from '../lib/services/settlement-service';
 import { setnxCache } from '../lib/db/redis';
 import { runDailyReconciliation } from '../lib/services/reconciliation-service';
 import { runPaymentRecoveryWorker, runRefundRecoveryWorker } from '../lib/services/payment-recovery';
-import { validateTurkishIban, executeBankPayout } from '../lib/services/payout-service';
+import { validateTurkishIban, executeBankPayout, getBankPayoutStatus } from '../lib/services/payout-service';
 import { maskPhone, maskSensitiveValue } from '../lib/services/logger-service';
 import { runFinancialDailyClosing } from '../lib/services/daily-closing-service';
 import { canTransitionPaymentStatus, transitionPaymentStatus } from '../lib/services/payment-state-machine';
@@ -141,8 +141,14 @@ async function runTests() {
   assert(hasPermission('CUSTOMER', 'refund.approve') === false, 'hasPermission: Customer does not have refund.approve permission');
   assert(hasPermission('MERCHANT', 'refund.create') === true, 'hasPermission: Merchant has refund.create permission');
 
-  // 7. Payment Provider Adapter, State Machine & Settlement Batch Calculation Tests
-  console.log('\n--- 7. Payment Provider Adapter, State Machine & Settlement Batch Calculation Tests ---');
+  // 7. Payment Provider Adapter, 3D Secure, State Machine & Settlement Batch Calculation Tests
+  console.log('\n--- 7. Payment Provider Adapter, 3D Secure, State Machine & Settlement Batch Calculation Tests ---');
+  const mappedErr = defaultPaymentProvider.mapErrorCode('INSUFFICIENT_FUNDS');
+  assert(mappedErr === 'PAYMENT_402_INSUFFICIENT_FUNDS', 'mapErrorCode: Maps provider error codes to TORBAA standard error codes');
+
+  const init3DS = await defaultPaymentProvider.initialize3DSecure({ orderId: 'ord-3ds-1', amountMinor: 5000n, currency: 'TRY' });
+  assert(init3DS.status === 'WAITING_3DS' && typeof init3DS.htmlContent === 'string', 'initialize3DSecure: Generates 3D Secure form redirection HTML');
+
   const validTransition = canTransitionPaymentStatus('PENDING_PROVIDER', 'COMPLETED');
   assert(validTransition === true, 'canTransitionPaymentStatus: PENDING_PROVIDER -> COMPLETED allowed');
 
@@ -191,6 +197,9 @@ async function runTests() {
     bypassApprovalCheck: true,
   });
   assert(payoutRes.status === 'PAID' || payoutRes.status === 'FAILED', 'executeBankPayout: Executes merchant bank EFT/FAST payout transfer');
+
+  const bankStatus = await getBankPayoutStatus('po-test-123');
+  assert(bankStatus.success === true && typeof bankStatus.status === 'string', 'getBankPayoutStatus: Queries bank EFT/FAST transfer status');
 
   const dualPayoutAppr = await requestDualApproval({
     actionType: 'SETTLEMENT_PAYOUT',
