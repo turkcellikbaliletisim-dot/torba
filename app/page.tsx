@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CreditCard, Store, Building2, ShieldCheck, Sparkles, ArrowRight, Wallet, QrCode, FileText } from 'lucide-react';
+import { Store, Building2, ShieldCheck, Sparkles, ArrowRight, Wallet, FileText } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -37,7 +37,7 @@ export default function Home() {
       </header>
 
       {/* Hero Section */}
-      <section className="max-w-5xl mx-auto my-12 text-center z-10">
+      <section className="max-w-6xl mx-auto my-10 text-center z-10">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/80 border border-slate-800 text-xs text-slate-300 mb-6 backdrop-blur-md">
           <Sparkles className="w-4 h-4 text-emerald-400" />
           <span>GVK 23/8 Vergi İstisnalı %100 Yerli Yemek Kartı Ekosistemi</span>
@@ -54,78 +54,100 @@ export default function Home() {
           Şirketler için %100 vergi istisnası, çalışanlar için harcadıkça kazandıran <strong className="text-emerald-400">Çift Bakiye (Net Yemek + Toin)</strong>, restoranlar için ise %3-%5 düşük komisyon ve 7 günde hızlı hakediş!
         </p>
 
-        {/* Portal Portal Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left max-w-5xl mx-auto">
+        {/* 4 Distinct Role Portal Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 text-left max-w-6xl mx-auto">
           {/* Card 1: Mobile App */}
           <Link
-            href="/mobile/explore"
-            className="group relative p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-emerald-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-emerald-500/10 flex flex-col justify-between"
+            href="/mobile"
+            className="group relative p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-emerald-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-emerald-500/10 flex flex-col justify-between"
           >
             <div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <Wallet className="w-6 h-6" />
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <Wallet className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2 flex items-center justify-between">
+              <h3 className="text-base font-bold text-white mb-1.5 flex items-center justify-between">
                 Mobil Uygulama
                 <ArrowRight className="w-4 h-4 text-emerald-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                B2C Tüketici & Şirket Çalışanı portalı. Çipli TORBAA Dijital Yemek Kartı, QR Ödeme, Fiş OCR ve %5 Toin iadesi.
+                B2C Tüketici & Şirket Çalışanı portalı. TORBAA Yemek Kartı, QR Ödeme & %5 Toin Puan.
               </p>
             </div>
-            <div className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-              <code>/mobile/explore</code>
+            <div className="text-xs text-emerald-400 font-semibold">
+              <code>/mobile</code>
             </div>
           </Link>
 
           {/* Card 2: Merchant Panel */}
           <Link
-            href="/panel/dashboard"
-            className="group relative p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-amber-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/10 flex flex-col justify-between"
+            href="/panel"
+            className="group relative p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-amber-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/10 flex flex-col justify-between"
           >
             <div>
-              <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <Store className="w-6 h-6" />
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <Store className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2 flex items-center justify-between">
-                İşletme / Bayi Paneli
+              <h3 className="text-base font-bold text-white mb-1.5 flex items-center justify-between">
+                Esnaf / Bayi Paneli
                 <ArrowRight className="w-4 h-4 text-amber-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                Üye restoranlar için Kasiyer POS QR Tahsilatı, haftalık hakediş takibi ve B2B sarf malzeme tedarik dükkanı.
+                Üye restoranlar için Kasiyer POS QR Tahsilatı ve haftalık hakediş takibi.
               </p>
             </div>
-            <div className="text-xs text-amber-400 font-semibold flex items-center gap-1">
-              <code>/panel/dashboard</code>
+            <div className="text-xs text-amber-400 font-semibold">
+              <code>/panel</code>
             </div>
           </Link>
 
           {/* Card 3: Corporate HR Portal */}
           <Link
-            href="/corporate/dashboard"
-            className="group relative p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-blue-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/10 flex flex-col justify-between"
+            href="/corporate"
+            className="group relative p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-blue-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/10 flex flex-col justify-between"
           >
             <div>
-              <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <Building2 className="w-6 h-6" />
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <Building2 className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2 flex items-center justify-between">
+              <h3 className="text-base font-bold text-white mb-1.5 flex items-center justify-between">
                 Kurumsal İK Portalı
                 <ArrowRight className="w-4 h-4 text-blue-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                Şirket İK yöneticileri için çalışanlara toplu yemek kartı yükleme ve GVK 23/8 vergi muafiyet raporları.
+                Şirket İK yöneticileri için çalışanlara toplu yemek kartı yükleme & vergi muafiyet raporları.
               </p>
             </div>
-            <div className="text-xs text-blue-400 font-semibold flex items-center gap-1">
-              <code>/corporate/dashboard</code>
+            <div className="text-xs text-blue-400 font-semibold">
+              <code>/corporate</code>
+            </div>
+          </Link>
+
+          {/* Card 4: Admin Management Portal */}
+          <Link
+            href="/admin"
+            className="group relative p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-purple-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/10 flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold text-white mb-1.5 flex items-center justify-between">
+                Yönetici (Admin) Paneli
+                <ArrowRight className="w-4 h-4 text-purple-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                Platform yöneticileri için Çift Onay (4-Eye), finansal kapanış & mutabakat denetimi.
+              </p>
+            </div>
+            <div className="text-xs text-purple-400 font-semibold">
+              <code>/admin</code>
             </div>
           </Link>
         </div>
       </section>
 
       {/* Footer Documentation Links */}
-      <footer className="max-w-7xl w-full mx-auto pt-8 border-t border-slate-900 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500 z-10">
+      <footer className="max-w-7xl w-full mx-auto pt-6 border-t border-slate-900 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500 z-10">
         <div>
           © 2026 TORBAA Teknolojileri A.Ş. Tüm hakları saklıdır.
         </div>
