@@ -13,6 +13,8 @@ import { createSettlementBatch } from '../lib/services/settlement-service';
 import { setnxCache } from '../lib/db/redis';
 import { runDailyReconciliation } from '../lib/services/reconciliation-service';
 import { runPaymentRecoveryWorker, runRefundRecoveryWorker } from '../lib/services/payment-recovery';
+import { validateTurkishIban, executeBankPayout } from '../lib/services/payout-service';
+import { maskPhone, maskSensitiveValue } from '../lib/services/logger-service';
 import crypto from 'crypto';
 
 console.log('🧪 Running Full TORBAA Master Production Readiness Test Suite...\n');
@@ -141,8 +143,8 @@ async function runTests() {
   const batch = await createSettlementBatch('m-101');
   assert(batch.merchantId === 'm-101' && (batch.status === 'PENDING_PAYOUT' || batch.status === 'NO_ELIGIBLE_PAYMENTS'), 'createSettlementBatch: Groups completed payments into settlement payout batch');
 
-  // 8. 4-Eye Approval (Çift Onay) Engine Tests
-  console.log('\n--- 8. 4-Eye Approval (Çift Onay) Engine Tests ---');
+  // 8. 4-Eye Approval (Çift Onay) Engine & Bank Payout Tests
+  console.log('\n--- 8. 4-Eye Approval (Çift Onay) Engine & Bank Payout Tests ---');
   const dualAppr = await requestDualApproval({
     actionType: 'HIGH_VALUE_REFUND',
     requestedByUserId: 'admin-1',
@@ -157,12 +159,35 @@ async function runTests() {
   const secondAdminAppr = await approveBySecondAdmin(dualAppr.approvalRecord.id, 'admin-2');
   assert(secondAdminAppr.success === true, 'approveBySecondAdmin: 2nd admin successfully grants approval');
 
-  // 9. Reconciliation & Bi-Directional Discrepancy Queue Engine Tests
-  console.log('\n--- 9. Reconciliation & Bi-Directional Discrepancy Queue Engine Tests ---');
+  const validIban = validateTurkishIban('TR990006200000001234567890');
+  assert(validIban === true, 'validateTurkishIban: Valid Turkish IBAN format verified');
+
+  const invalidIban = validateTurkishIban('TR12345');
+  assert(invalidIban === false, 'validateTurkishIban: Invalid short IBAN rejected');
+
+  const payoutRes = await executeBankPayout({
+    settlementBatchId: 'set-test-99',
+    merchantId: 'm-101',
+    iban: 'TR990006200000001234567890',
+    accountHolderName: 'Test Merchant',
+    amountMinor: 100000n, // ₺1.000,00
+    requestedByUserId: 'admin-1',
+    bypassApprovalCheck: true,
+  });
+  assert(payoutRes.status === 'PAID' || payoutRes.status === 'FAILED', 'executeBankPayout: Executes merchant bank EFT/FAST payout transfer');
+
+  // 9. Reconciliation & Sensitive Data Masking Logger Tests
+  console.log('\n--- 9. Reconciliation & Sensitive Data Masking Logger Tests ---');
   const recon = await runDailyReconciliation([
     { providerPaymentId: 'pay-999', amountMinor: 5000n, status: 'COMPLETED', settlementDate: '2026-07-23' },
   ]);
   assert(recon.totalChecked === 1, 'runDailyReconciliation: Audits provider report against local ledger bi-directionally');
+
+  const maskedPhone = maskPhone('5329998877');
+  assert(maskedPhone === '532***77', 'maskPhone: Masks phone number for sensitive structured audit logging');
+
+  const maskedUser = maskSensitiveValue('usr-1001-admin');
+  assert(maskedUser.includes('***'), 'maskSensitiveValue: Masks user IDs in log output');
 
   const recovery = await runPaymentRecoveryWorker();
   assert(typeof recovery.recoveredCount === 'number', 'runPaymentRecoveryWorker: Scans PENDING payments and queries provider status');
