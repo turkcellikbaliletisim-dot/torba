@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const { merchantId, branchId, amountMinor, paymentType, idempotencyKey } = validation.data;
 
-    // 3. Acquire Atomic Idempotency Lock via Redis SET NX EX (Section 4.2)
+    // 3. Acquire Atomic Idempotency Lock via Redis SET NX EX (Item 4.2)
     const lockResult = await acquireIdempotencyLock(idempotencyKey, rawBody, 60);
 
     if (lockResult.conflict) {
@@ -56,26 +56,39 @@ export async function POST(request: NextRequest) {
     const orderId = `ord-${Date.now()}`;
     const localPaymentId = `pay-${orderId}`;
 
-    // 4. Fail-Closed Local PENDING Payment DB Insert (Section 4.3)
+    // Calculate Commission Snapshot (300 basis points = 3%)
+    const commissionBasisPoints = 300;
+    const grossAmount = BigInt(amountMinor);
+    const commissionAmount = (grossAmount * BigInt(commissionBasisPoints)) / 10000n;
+    const netPayoutAmount = grossAmount - commissionAmount;
+
+    // 4. Fail-Closed Local PENDING Payment DB Insert with Commission Snapshot (Section 1 & 7)
     let isDbCreated = false;
     try {
       client = await pool.connect();
       await client.query(
-        `INSERT INTO payments (id, merchant_id, user_id, amount_minor, currency, status, idempotency_key, created_at)
-         VALUES ($1, $2, $3, $4, 'TRY', 'PENDING', $5, NOW())
+        `INSERT INTO payments (id, merchant_id, user_id, amount_minor, commission_basis_points, commission_amount_minor, net_payout_minor, currency, status, idempotency_key, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'TRY', 'PENDING', $8, NOW())
          ON CONFLICT (id) DO NOTHING`,
-        [localPaymentId, merchantId, auth.user.userId, amountMinor, idempotencyKey]
+        [
+          localPaymentId,
+          merchantId,
+          auth.user.userId,
+          amountMinor.toString(),
+          commissionBasisPoints,
+          commissionAmount.toString(),
+          netPayoutAmount.toString(),
+          idempotencyKey,
+        ]
       );
       isDbCreated = true;
     } catch (dbErr) {
-      if (process.env.NODE_ENV === 'production') {
-        // Fail-Closed: DO NOT call payment provider if DB insert fails! (Section 4.3)
-        await releaseIdempotencyLock(idempotencyKey);
-        return NextResponse.json(
-          { success: false, error: 'Veritabanı erişim hatası nedeniyle ödeme başlatılamadı (Fail-Closed Guard).' },
-          { status: 503 }
-        );
-      }
+      // Fail-Closed: DO NOT call payment provider if DB insert fails! (Item 4.3)
+      await releaseIdempotencyLock(idempotencyKey);
+      return NextResponse.json(
+        { success: false, error: 'Veritabanı erişim hatası nedeniyle ödeme başlatılamadı (Fail-Closed Guard).' },
+        { status: 503 }
+      );
     } finally {
       if (client) client.release();
     }
@@ -121,6 +134,7 @@ export async function POST(request: NextRequest) {
         status: providerResult.status,
         amountMinor,
         branchId,
+        commissionBasisPoints,
         idempotencyKey,
         correlationId,
       },
@@ -135,7 +149,7 @@ export async function POST(request: NextRequest) {
       action: 'PAYMENT_INTENT_CREATED',
       resourceType: 'PAYMENT',
       resourceId: localPaymentId,
-      metadata: { merchantId, branchId, amountMinor, paymentType, idempotencyKey, correlationId },
+      metadata: { merchantId, branchId, amountMinor, commissionBasisPoints, paymentType, idempotencyKey, correlationId },
     });
 
     return NextResponse.json(responseData, { status: 200 });

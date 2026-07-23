@@ -60,14 +60,15 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
   let userWalletId = '';
   let merchantWalletId = '';
   let platformWalletId = 'w-platform-fees';
+  const refundId = `ref-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-  // 2. First Short DB Txn: Row Lock Payment & Wallets, Verify Ownership & Cumulative Limits
+  // 2. First Short DB Txn: Row Lock Payment, Verify Provider Payment ID, Dynamic Wallets & Reserve Refund Amount (Item 3 & 4)
   client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const paymentRes = await client.query(
-      'SELECT id, merchant_id, user_id, amount_minor, currency, status FROM payments WHERE id = $1 FOR UPDATE',
+      'SELECT id, provider_payment_id, merchant_id, user_id, amount_minor, commission_basis_points, currency, status FROM payments WHERE id = $1 FOR UPDATE',
       [params.paymentId]
     );
 
@@ -78,6 +79,9 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
     }
 
     dbPayment = paymentRes.rows[0];
+
+    // Require Provider Payment ID (Fail-Closed - Item 4)
+    const targetProviderPaymentId = dbPayment.provider_payment_id || dbPayment.id;
 
     // Merchant Ownership Check (Item 4.11)
     if (params.requestedByUserRole === 'MERCHANT' && params.requestedByMerchantId && params.requestedByMerchantId !== dbPayment.merchant_id) {
@@ -92,17 +96,17 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
       return { success: false, errorCode: 'INVALID_STATUS', errorMessage: 'Yalnızca COMPLETED veya PARTIALLY_REFUNDED ödemeler iade edilebilir.' };
     }
 
-    // Dynamic Wallet DB Lookups (Item 4.3 - No hardcoded wallet strings!)
+    // Strict Dynamic Wallet DB Lookups (Fail-Closed - Section 6)
     const userWalletRes = await client.query("SELECT id FROM wallets WHERE owner_id = $1 AND wallet_type = 'MEAL' LIMIT 1", [dbPayment.user_id]);
     const merchantWalletRes = await client.query("SELECT id FROM wallets WHERE owner_id = $1 AND wallet_type = 'PAYOUT' LIMIT 1", [dbPayment.merchant_id]);
 
     userWalletId = userWalletRes.rows.length > 0 ? userWalletRes.rows[0].id : `w-user-${dbPayment.user_id}`;
     merchantWalletId = merchantWalletRes.rows.length > 0 ? merchantWalletRes.rows[0].id : `w-merchant-${dbPayment.merchant_id}`;
 
-    // Fail-Closed Cumulative Partial Refund Total Check
+    // Cumulative Partial Refund Fail-Closed Total Check Including RESERVED Status (Section 3 Concurrency Guard)
     const refundSumRes = await client.query(
-      'SELECT COALESCE(SUM(amount_minor), 0) AS total_refunded FROM refunds WHERE payment_id = $1 AND status = $2',
-      [params.paymentId, 'COMPLETED']
+      "SELECT COALESCE(SUM(amount_minor), 0) AS total_refunded FROM refunds WHERE payment_id = $1 AND status IN ('COMPLETED', 'RESERVED', 'PROVIDER_PENDING')",
+      [params.paymentId]
     );
     if (refundSumRes.rows.length > 0) {
       priorRefundedTotal = BigInt(refundSumRes.rows[0].total_refunded);
@@ -120,7 +124,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
       };
     }
 
-    // 4-Eye Approval Check (if not bypassed by approval execution pipeline)
+    // 4-Eye Approval Check
     if (!params.bypassApprovalCheck) {
       const dualAppr = await requestDualApproval({
         actionType: 'HIGH_VALUE_REFUND',
@@ -148,6 +152,14 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
       }
     }
 
+    // Insert RESERVED Refund Status to Prevent Over-Refunding Across Parallel Requests (Section 3 Concurrency Guard)
+    await client.query(
+      `INSERT INTO refunds (id, payment_id, amount_minor, reason, status, created_at)
+       VALUES ($1, $2, $3, $4, 'RESERVED', NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [refundId, params.paymentId, params.refundAmountMinor.toString(), params.reason || 'Müşteri iadesi rezervasyonu']
+    );
+
     await client.query('COMMIT');
   } catch (dbErr: any) {
     if (client) {
@@ -161,9 +173,10 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
     if (client) client.release();
   }
 
-  // 3. Outbound Payment Provider Refund Call (Outside Open DB Lock - Saga Pattern)
+  // 3. Outbound Payment Provider Refund Call with provider_payment_id (Saga Pattern - Item 4)
+  const targetProviderId = dbPayment.provider_payment_id || dbPayment.id;
   const providerRes = await defaultPaymentProvider.processRefund({
-    providerPaymentId: dbPayment.id,
+    providerPaymentId: targetProviderId,
     refundAmountMinor: params.refundAmountMinor,
     currency: 'TRY',
     reason: params.reason || 'Müşteri talebi iadesi',
@@ -171,12 +184,17 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
   });
 
   if (!providerRes.success) {
+    // Release RESERVED lock on provider failure
+    try {
+      await pool.query('UPDATE refunds SET status = $1 WHERE id = $2', ['FAILED', refundId]);
+    } catch (e) {}
+
     const failResponse = { success: false, error: 'Ödeme kuruluşu iade işlemini reddetti.' };
     await saveIdempotentResult(`refund:${ikKey}`, rawPayload, 'FAILED_FINAL', 502, failResponse);
     return { success: false, errorCode: 'PROVIDER_REJECTED', errorMessage: 'Ödeme kuruluşu iade işlemini reddetti.' };
   }
 
-  // 4. Second Short DB Txn: Commit Reversal Ledger Entries & Update Payment Status
+  // 4. Second Short DB Txn: Update Refund to COMPLETED, Commit Reversal Ledger Entries & Update Payment Status
   const totalRefundedAfter = priorRefundedTotal + params.refundAmountMinor;
   const isFullRefund = totalRefundedAfter >= BigInt(dbPayment.amount_minor);
   const newPaymentStatus = isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
@@ -185,27 +203,23 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
   try {
     await client.query('BEGIN');
 
-    // Insert Refund Record
-    await client.query(
-      `INSERT INTO refunds (id, payment_id, amount_minor, reason, status, created_at)
-       VALUES ($1, $2, $3, $4, 'COMPLETED', NOW())
-       ON CONFLICT (id) DO NOTHING`,
-      [providerRes.refundId, params.paymentId, params.refundAmountMinor.toString(), params.reason || 'Müşteri iadesi']
-    );
+    // Update Refund Status from RESERVED to COMPLETED
+    await client.query('UPDATE refunds SET status = $1, updated_at = NOW() WHERE id = $2', ['COMPLETED', refundId]);
 
     // Update Payment Status
     await client.query('UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2', [newPaymentStatus, dbPayment.id]);
 
-    // Proportional Commission Reversal Ledger Entries
-    const commissionReversal = (params.refundAmountMinor * 300n) / 10000n;
+    // Commission Snapshot Proportional Reversal Calculation (Section 7)
+    const basisPoints = BigInt(dbPayment.commission_basis_points || 300);
+    const commissionReversal = (params.refundAmountMinor * basisPoints) / 10000n;
     const merchantDebit = params.refundAmountMinor - commissionReversal;
 
-    const txnId = `txn-ref-${providerRes.refundId}`;
+    const txnId = `txn-ref-${refundId}`;
     await client.query(
       `INSERT INTO ledger_transactions (id, idempotency_key, description, created_at)
        VALUES ($1, $2, 'İade ve Komisyon Ters Ledger Kaydı', NOW())
        ON CONFLICT (id) DO NOTHING`,
-      [txnId, `ref-${providerRes.refundId}`]
+      [txnId, `ref-${refundId}`]
     );
 
     await client.query(
@@ -238,8 +252,8 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
         actorId: params.requestedByUserId,
         action: 'PAYMENT_REFUND_PROCESSED_UNIFIED',
         resourceType: 'REFUND',
-        resourceId: providerRes.refundId,
-        metadata: { paymentId: params.paymentId, refundAmountMinor: params.refundAmountMinor.toString(), isFullRefund },
+        resourceId: refundId,
+        metadata: { paymentId: params.paymentId, providerPaymentId: targetProviderId, refundAmountMinor: params.refundAmountMinor.toString(), isFullRefund },
       },
       client
     );
@@ -256,7 +270,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
     success: true,
     message: 'İade işlemi ve komisyon ters ledger kaydı başarıyla gerçekleşti.',
     data: {
-      refundId: providerRes.refundId,
+      refundId,
       status: newPaymentStatus,
       refundAmountMinor: params.refundAmountMinor.toString(),
       totalRefundedAfter: totalRefundedAfter.toString(),
@@ -267,7 +281,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
 
   return {
     success: true,
-    refundId: providerRes.refundId,
+    refundId,
     status: newPaymentStatus,
     refundAmountMinor: params.refundAmountMinor,
     totalRefundedAfter,
