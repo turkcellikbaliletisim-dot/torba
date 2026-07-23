@@ -1,7 +1,10 @@
-import { getAuthRuntime } from '@/lib/auth/runtime';
+import { resolveAuthRuntime } from '@/lib/auth/runtime-http';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request): Promise<Response> {
-  return getAuthRuntime().handlers.logout(request);
+  const resolved = resolveAuthRuntime();
+  if ('response' in resolved) return resolved.response;
+
+  return resolved.runtime.handlers.logout(request);
 }
