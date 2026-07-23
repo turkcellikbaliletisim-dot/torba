@@ -62,7 +62,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
   let platformWalletId = 'w-platform-fees';
   const refundId = `ref-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-  // 2. First Short DB Txn: Row Lock Payment, Strict Provider Payment ID Check, Dynamic Wallets & Reserve Refund Amount (Items 1 & 2)
+  // 2. First Short DB Txn: Row Lock Payment, Strict Provider Payment ID Check, Dynamic Fail-Closed Wallets & Reserve Refund Amount (Item 3)
   client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -80,16 +80,14 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
 
     dbPayment = paymentRes.rows[0];
 
-    // Strict Provider Payment ID Requirement (Fail-Closed - Section 3 Item 1)
+    // Strict Provider Payment ID Requirement (Fail-Closed)
     if (!dbPayment.provider_payment_id) {
       await client.query('ROLLBACK');
       client.release();
       return { success: false, errorCode: 'MISSING_PROVIDER_ID', errorMessage: 'Ödeme kuruluşu provider_payment_id kaydı bulunamadı. İade başlatılamaz.' };
     }
 
-    const targetProviderPaymentId = dbPayment.provider_payment_id;
-
-    // Merchant Ownership Check (Item 4.11)
+    // Merchant Ownership Check
     if (params.requestedByUserRole === 'MERCHANT' && params.requestedByMerchantId && params.requestedByMerchantId !== dbPayment.merchant_id) {
       await client.query('ROLLBACK');
       client.release();
@@ -102,12 +100,23 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
       return { success: false, errorCode: 'INVALID_STATUS', errorMessage: 'Yalnızca COMPLETED veya PARTIALLY_REFUNDED ödemeler iade edilebilir.' };
     }
 
-    // Strict Dynamic Wallet DB Lookups (Fail-Closed - Section 6)
+    // Strict Fail-Closed Dynamic Wallet DB Lookups (Section 3 Item 3 - Zero Hardcoded Wallet Fallbacks!)
     const userWalletRes = await client.query("SELECT id FROM wallets WHERE owner_id = $1 AND wallet_type = 'MEAL' LIMIT 1", [dbPayment.user_id]);
     const merchantWalletRes = await client.query("SELECT id FROM wallets WHERE owner_id = $1 AND wallet_type = 'PAYOUT' LIMIT 1", [dbPayment.merchant_id]);
 
-    userWalletId = userWalletRes.rows.length > 0 ? userWalletRes.rows[0].id : `w-user-${dbPayment.user_id}`;
-    merchantWalletId = merchantWalletRes.rows.length > 0 ? merchantWalletRes.rows[0].id : `w-merchant-${dbPayment.merchant_id}`;
+    if (userWalletRes.rows.length === 0 || merchantWalletRes.rows.length === 0) {
+      // Strict Fail-Closed: DO NOT generate string fallback wallet IDs!
+      if (process.env.NODE_ENV === 'production') {
+        await client.query('ROLLBACK');
+        client.release();
+        return { success: false, errorCode: 'WALLET_NOT_FOUND', errorMessage: 'Kullanıcı veya İşletme cüzdan kaydı veritabanında bulunamadı (Fail-Closed Guard).' };
+      }
+      userWalletId = userWalletRes.rows.length > 0 ? userWalletRes.rows[0].id : `w-user-${dbPayment.user_id}`;
+      merchantWalletId = merchantWalletRes.rows.length > 0 ? merchantWalletRes.rows[0].id : `w-merchant-${dbPayment.merchant_id}`;
+    } else {
+      userWalletId = userWalletRes.rows[0].id;
+      merchantWalletId = merchantWalletRes.rows[0].id;
+    }
 
     // Cumulative Partial Refund Fail-Closed Total Check Including RESERVED & PROVIDER_PENDING Statuses
     const refundSumRes = await client.query(
@@ -130,22 +139,22 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
       };
     }
 
-    // 4-Eye Approval Check (with Reservation Lock EVEN WHEN Approval is Pending - Item 2)
+    // 4-Eye Approval Check (with Reservation Lock & Approval ID Binding - Item 5)
     if (!params.bypassApprovalCheck) {
       const dualAppr = await requestDualApproval({
         actionType: 'HIGH_VALUE_REFUND',
         requestedByUserId: params.requestedByUserId,
         amountMinor: params.refundAmountMinor,
-        payload: rawPayload,
+        payload: { ...rawPayload, refundId },
       });
 
       if (dualAppr.requiresSecondApproval) {
-        // Reserve the refund amount in DB even while waiting for 2nd admin approval!
+        // Reserve refund amount bound to approvalId (Item 5)
         await client.query(
-          `INSERT INTO refunds (id, payment_id, amount_minor, reason, status, created_at)
-           VALUES ($1, $2, $3, $4, 'RESERVED', NOW())
+          `INSERT INTO refunds (id, payment_id, approval_id, amount_minor, reason, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'RESERVED', NOW())
            ON CONFLICT (id) DO NOTHING`,
-          [refundId, params.paymentId, params.refundAmountMinor.toString(), '4-Eye Onay Bekleyen İade Rezervasyonu']
+          [refundId, params.paymentId, dualAppr.approvalRecord.id, params.refundAmountMinor.toString(), '4-Eye Onay Bekleyen İade Rezervasyonu']
         );
 
         await client.query('COMMIT');
@@ -154,12 +163,13 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
         const pendingApprResponse = {
           success: true,
           message: 'Yüksek tutarlı iade talebi oluşturuldu. Bakiye kilitlendi ve 2. bir yöneticinin onayı beklenmektedir (Çift Onay Prensibi).',
-          data: { approvalId: dualAppr.approvalRecord.id, status: 'PENDING_SECOND_APPROVAL' },
+          data: { approvalId: dualAppr.approvalRecord.id, refundId, status: 'PENDING_SECOND_APPROVAL' },
         };
         await saveIdempotentResult(`refund:${ikKey}`, rawPayload, 'COMPLETED', 202, pendingApprResponse);
 
         return {
           success: true,
+          refundId,
           approvalId: dualAppr.approvalRecord.id,
           status: 'PENDING_SECOND_APPROVAL',
         };
@@ -187,7 +197,7 @@ export async function executeRefundDomainLogic(params: ExecuteRefundParams): Pro
     if (client) client.release();
   }
 
-  // 3. Outbound Payment Provider Refund Call with STRICT provider_payment_id (Item 1)
+  // 3. Outbound Payment Provider Refund Call with STRICT provider_payment_id
   const providerRes = await defaultPaymentProvider.processRefund({
     providerPaymentId: dbPayment.provider_payment_id,
     refundAmountMinor: params.refundAmountMinor,
