@@ -15,6 +15,7 @@ import { runDailyReconciliation } from '../lib/services/reconciliation-service';
 import { runPaymentRecoveryWorker, runRefundRecoveryWorker } from '../lib/services/payment-recovery';
 import { validateTurkishIban, executeBankPayout } from '../lib/services/payout-service';
 import { maskPhone, maskSensitiveValue } from '../lib/services/logger-service';
+import { runFinancialDailyClosing } from '../lib/services/daily-closing-service';
 import crypto from 'crypto';
 
 console.log('🧪 Running Full TORBAA Master Production Readiness Test Suite...\n');
@@ -176,8 +177,14 @@ async function runTests() {
   });
   assert(payoutRes.status === 'PAID' || payoutRes.status === 'FAILED', 'executeBankPayout: Executes merchant bank EFT/FAST payout transfer');
 
-  // 9. Reconciliation & Sensitive Data Masking Logger Tests
-  console.log('\n--- 9. Reconciliation & Sensitive Data Masking Logger Tests ---');
+  // 9. Financial Daily Closing Equation Engine Tests
+  console.log('\n--- 9. Financial Daily Closing Equation Engine Tests ---');
+  const closing = await runFinancialDailyClosing();
+  assert(closing.isBalanced === true, 'runFinancialDailyClosing: Enforces Master Financial Equation (Provider = Local = Ledger = Settlement)');
+  assert(closing.localPaymentsTotalMinor > 0n, 'runFinancialDailyClosing: Calculates total gross payments for business date');
+
+  // 10. Reconciliation & Sensitive Data Masking Logger Tests
+  console.log('\n--- 10. Reconciliation & Sensitive Data Masking Logger Tests ---');
   const recon = await runDailyReconciliation([
     { providerPaymentId: 'pay-999', amountMinor: 5000n, status: 'COMPLETED', settlementDate: '2026-07-23' },
   ]);
@@ -195,8 +202,8 @@ async function runTests() {
   const refundRecovery = await runRefundRecoveryWorker();
   assert(typeof refundRecovery.recoveredCount === 'number', 'runRefundRecoveryWorker: Scans stuck RESERVED/PROVIDER_PENDING refunds and recovers state');
 
-  // 10. Real Idempotency Lock & 409 Conflict Payload Hash Tests
-  console.log('\n--- 10. Real Idempotency Lock & 409 Conflict Payload Hash Tests ---');
+  // 11. Real Idempotency Lock & 409 Conflict Payload Hash Tests
+  console.log('\n--- 11. Real Idempotency Lock & 409 Conflict Payload Hash Tests ---');
   const ik = `idempotent-test-key-${Date.now()}`;
   const originalPayload = { merchantId: 'm-1', amountMinor: 5000 };
   const conflictingPayload = { merchantId: 'm-1', amountMinor: 9999 };
@@ -210,8 +217,8 @@ async function runTests() {
   const retrievedIdempotency = await getIdempotentResult(ik);
   assert(retrievedIdempotency?.responseBody?.paymentId === 'pay-999', 'saveIdempotentResult/getIdempotentResult: Idempotency lock stored and retrieved');
 
-  // 11. HMAC Webhook Signature Tests
-  console.log('\n--- 11. HMAC Webhook Signature Tests ---');
+  // 12. HMAC Webhook Signature Tests
+  console.log('\n--- 12. HMAC Webhook Signature Tests ---');
   const rawBody = '{"paymentId":"pay-123","status":"SUCCESS"}';
   const secretKey = process.env.PAYMENT_SECRET_KEY || 'dev_payment_secret_key_2026';
   const validSig = crypto.createHmac('sha256', secretKey).update(rawBody).digest('hex');
