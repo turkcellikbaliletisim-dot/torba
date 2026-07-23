@@ -20,10 +20,23 @@ export function configureAuthRuntime(dependencies: AuthHandlersDependencies & {
   return runtime;
 }
 
+export function tryGetAuthRuntime(): AuthRuntime | null {
+  return runtime;
+}
+
+export function isAuthRuntimeConfigured(): boolean {
+  return runtime !== null;
+}
+
 export function getAuthRuntime(): AuthRuntime {
-  if (!runtime) {
+  const configured = tryGetAuthRuntime();
+  if (!configured) {
     throw new Error('Auth runtime is not configured.');
   }
 
-  return runtime;
+  return configured;
+}
+
+export function resetAuthRuntimeForTests(): void {
+  runtime = null;
 }
