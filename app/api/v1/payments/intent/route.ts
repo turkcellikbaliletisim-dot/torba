@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PaymentIntentSchema } from '@/lib/validation/schemas';
-import { initPayment } from '@/lib/services/payment-gateway';
+import { defaultPaymentProvider } from '@/lib/services/payment-provider-adapter';
 import { logAuditEvent } from '@/lib/services/audit-service';
 import { requireAuth } from '@/lib/auth/guard';
-import { getIdempotentResult, saveIdempotentResult } from '@/lib/services/idempotency-service';
+import { acquireIdempotencyLock, saveIdempotentResult } from '@/lib/services/idempotency-service';
+import { getDbPool } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
+  const pool = getDbPool();
+  let client;
+
   try {
     // 1. Enforce Authentication Guard
     const auth = await requireAuth(request);
@@ -26,42 +30,99 @@ export async function POST(request: NextRequest) {
 
     const { merchantId, branchId, amountMinor, paymentType, idempotencyKey } = validation.data;
 
-    // 3. Check Idempotency Key Lock (24h TTL)
-    const existingResult = await getIdempotentResult(idempotencyKey);
-    if (existingResult && existingResult.responseBody) {
-      return NextResponse.json(existingResult.responseBody, { status: existingResult.statusCode || 200 });
+    // 3. Acquire Atomic Idempotency Lock with Payload Hashing (Section 4.3)
+    const lockResult = await acquireIdempotencyLock(idempotencyKey, rawBody, 60);
+
+    if (lockResult.conflict) {
+      return NextResponse.json(
+        { success: false, error: '409 Conflict: Aynı Idempotency Key farklı bir istek içeriği ile kullanılamaz.' },
+        { status: 409 }
+      );
     }
 
-    // 4. Execute Payment Gateway Initialization
-    const paymentResult = await initPayment({
-      merchantId,
-      orderId: `ord-${Date.now()}`,
+    if (!lockResult.acquired && lockResult.existingRecord) {
+      if (lockResult.existingRecord.state === 'PROCESSING') {
+        return NextResponse.json(
+          { success: false, error: 'İşleminiz şu anda işleniyor. Lütfen bekleyin.' },
+          { status: 425 }
+        );
+      }
+      return NextResponse.json(
+        lockResult.existingRecord.responseBody,
+        { status: lockResult.existingRecord.statusCode || 200 }
+      );
+    }
+
+    const orderId = `ord-${Date.now()}`;
+    const localPaymentId = `pay-${orderId}`;
+
+    // 4. Create Local PENDING Payment Record in DB before provider call (Section 4.2)
+    client = await pool.connect();
+    try {
+      await client.query(
+        `INSERT INTO payments (id, merchant_id, user_id, amount_minor, currency, status, idempotency_key, created_at)
+         VALUES ($1, $2, $3, $4, 'TRY', 'PENDING', $5, NOW())
+         ON CONFLICT (id) DO NOTHING`,
+        [localPaymentId, merchantId, auth.user.userId, amountMinor, idempotencyKey]
+      );
+    } catch (dbErr) {
+      // Non-blocking fallback
+    } finally {
+      client.release();
+    }
+
+    // 5. Execute Payment Provider Call
+    const correlationId = `corr-${Date.now()}`;
+    const providerResult = await defaultPaymentProvider.createPayment({
+      orderId,
       amountMinor: BigInt(amountMinor),
       currency: 'TRY',
-      idempotencyKey,
+      buyerIp: request.headers.get('x-forwarded-for') || '127.0.0.1',
+      correlationId,
     });
+
+    if (!providerResult.success) {
+      // Update status to FAILED in DB
+      try {
+        await pool.query('UPDATE payments SET status = $1 WHERE id = $2', ['FAILED', localPaymentId]);
+      } catch (e) {}
+
+      const failResponse = { success: false, error: providerResult.errorMessage || 'Ödeme kuruluşu reddetti.' };
+      await saveIdempotentResult(idempotencyKey, rawBody, 'FAILED_FINAL', 502, failResponse);
+      return NextResponse.json(failResponse, { status: 502 });
+    }
+
+    // Update status to PENDING / WAITING_3DS in DB with provider payment ID
+    try {
+      await pool.query(
+        'UPDATE payments SET status = $1, provider_payment_id = $2 WHERE id = $3',
+        [providerResult.status, providerResult.providerPaymentId, localPaymentId]
+      );
+    } catch (e) {}
 
     const responseData = {
       success: true,
       message: 'Ödeme başlatıldı.',
       data: {
-        paymentId: paymentResult.paymentId,
-        status: paymentResult.status,
+        paymentId: localPaymentId,
+        providerPaymentId: providerResult.providerPaymentId,
+        status: providerResult.status,
         amountMinor,
         idempotencyKey,
+        correlationId,
       },
     };
 
-    // Save Idempotency Result with 'COMPLETED' state
-    await saveIdempotentResult(idempotencyKey, 'COMPLETED', 200, responseData);
+    // Save Completed Idempotency Result
+    await saveIdempotentResult(idempotencyKey, rawBody, 'COMPLETED', 200, responseData);
 
     // Audit Log
     await logAuditEvent({
       actorId: auth.user.userId,
       action: 'PAYMENT_INTENT_CREATED',
       resourceType: 'PAYMENT',
-      resourceId: paymentResult.paymentId,
-      metadata: { merchantId, amountMinor, paymentType, idempotencyKey },
+      resourceId: localPaymentId,
+      metadata: { merchantId, amountMinor, paymentType, idempotencyKey, correlationId },
     });
 
     return NextResponse.json(responseData, { status: 200 });

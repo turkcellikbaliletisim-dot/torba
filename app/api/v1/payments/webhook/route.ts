@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/services/payment-gateway';
 import { logAuditEvent } from '@/lib/services/audit-service';
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = JSON.parse(rawBody);
-    const { providerPaymentId, status, eventId } = payload;
+    const { providerPaymentId, status, eventId: incomingEventId } = payload;
 
     if (!providerPaymentId) {
       return NextResponse.json(
@@ -33,22 +34,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Compute Real SHA-256 Payload Hash (Section 4.11)
+    const payloadHash = crypto.createHash('sha256').update(rawBody).digest('hex');
+    const eventId = incomingEventId || `evt-${payloadHash.substring(0, 16)}`;
+
     // Acquire PostgreSQL DB Client for Transaction
     client = await pool.connect();
 
     try {
       await client.query('BEGIN');
 
-      // 1. Webhook Replay Protection check in DB (Section 7.2)
-      if (eventId) {
-        const replayCheck = await client.query(
-          'SELECT event_id FROM webhook_events WHERE event_id = $1 LIMIT 1 FOR UPDATE',
-          [eventId]
+      // 1. Webhook Replay Protection: Unique Event Lock (Section 4.10 & 5.2)
+      const eventLockRes = await client.query(
+        `INSERT INTO webhook_events (event_id, provider, payload_hash, status, created_at)
+         VALUES ($1, 'CRAFTGATE', $2, 'PROCESSING', NOW())
+         ON CONFLICT (event_id) DO NOTHING
+         RETURNING event_id`,
+        [eventId, payloadHash]
+      );
+
+      if (eventLockRes.rows.length === 0) {
+        // Event already processed or in progress by another worker -> Replay Ignored
+        await client.query('COMMIT');
+        return NextResponse.json(
+          { success: true, message: 'Webhook zaten önceden işlendi (Replay Ignored).' },
+          { status: 200 }
         );
-        if (replayCheck.rows.length > 0) {
-          await client.query('COMMIT');
-          return NextResponse.json({ success: true, message: 'Webhook zaten önceden işlendi (Replay Ignored).' }, { status: 200 });
-        }
       }
 
       // 2. Fetch and Row Lock Local Payment Record (Section 3.1 & 3.2 FOR UPDATE)
@@ -81,6 +92,7 @@ export async function POST(request: NextRequest) {
 
       // Check if already completed
       if (dbPayment.status === 'COMPLETED') {
+        await client.query('UPDATE webhook_events SET status = $1 WHERE event_id = $2', ['PROCESSED', eventId]);
         await client.query('COMMIT');
         return NextResponse.json({ success: true, message: 'Ödeme zaten önceden tamamlanmıştı.' }, { status: 200 });
       }
@@ -103,9 +115,6 @@ export async function POST(request: NextRequest) {
         [txnId, `wh-${dbPayment.id}`]
       );
 
-      // Entry 1: Debit User Wallet (Gross Amount)
-      // Entry 2: Credit Merchant Payout Wallet (Net Payout)
-      // Entry 3: Credit Platform Fee Wallet (Commission)
       await client.query(
         `INSERT INTO ledger_entries (id, transaction_id, wallet_id, direction, amount_minor, created_at)
          VALUES 
@@ -128,15 +137,20 @@ export async function POST(request: NextRequest) {
         ]
       );
 
-      // 6. Log Webhook Event for Replay Protection
-      if (eventId) {
-        await client.query(
-          `INSERT INTO webhook_events (event_id, provider, payload_hash, status, created_at)
-           VALUES ($1, 'CRAFTGATE', $2, 'PROCESSED', NOW())
-           ON CONFLICT DO NOTHING`,
-          [eventId, `hash-${Date.now()}`]
-        );
-      }
+      // Mark Webhook Event PROCESSED
+      await client.query('UPDATE webhook_events SET status = $1 WHERE event_id = $2', ['PROCESSED', eventId]);
+
+      // 6. Write Transaction-Safe Audit Log (Section 4.13)
+      await logAuditEvent(
+        {
+          actorId: 'payment-gateway',
+          action: 'WEBHOOK_PAYMENT_SETTLED_ATOMIC',
+          resourceType: 'PAYMENT',
+          resourceId: providerPaymentId,
+          metadata: { ...payload, payloadHash },
+        },
+        client
+      );
 
       await client.query('COMMIT');
     } catch (dbTxnErr) {
@@ -146,27 +160,11 @@ export async function POST(request: NextRequest) {
       if (client) client.release();
     }
 
-    // 7. Non-blocking Audit Logging
-    await logAuditEvent({
-      actorId: 'payment-gateway',
-      action: 'WEBHOOK_PAYMENT_SETTLED_ATOMIC',
-      resourceType: 'PAYMENT',
-      resourceId: providerPaymentId,
-      metadata: payload,
-    });
-
     return NextResponse.json({
       success: true,
       message: 'Webhook tek PostgreSQL transaction içinde atomik olarak işlendi.',
     });
   } catch (error: any) {
-    if (client) {
-      try {
-        await client.query('ROLLBACK');
-      } catch (e) {}
-      client.release();
-    }
-
     return NextResponse.json(
       { success: false, error: 'Webhook işleme hatası: ' + (error.message || 'Bilinmeyen hata') },
       { status: 500 }

@@ -5,13 +5,13 @@ import { storeOtp, verifyOtpCode, canSendOtp, deleteOtp, generateSecureOtpCode }
 import { checkRateLimitAsync } from '../lib/middleware/rate-limit';
 import { signSessionToken, verifySessionToken } from '../lib/auth/jwt';
 import { verifyWebhookSignature } from '../lib/services/payment-gateway';
-import { getIdempotentResult, saveIdempotentResult } from '../lib/services/idempotency-service';
+import { getIdempotentResult, saveIdempotentResult, acquireIdempotencyLock } from '../lib/services/idempotency-service';
 import { defaultPaymentProvider } from '../lib/services/payment-provider-adapter';
 import { hasPermission } from '../lib/auth/rbac';
 import { requestDualApproval, approveBySecondAdmin } from '../lib/services/approval-service';
 import crypto from 'crypto';
 
-console.log('🧪 Running Full TORBAA Master Production Test Suite...\n');
+console.log('🧪 Running Full TORBAA Master Production Readiness Test Suite...\n');
 
 let passedTests = 0;
 let totalTests = 0;
@@ -45,7 +45,8 @@ async function runTests() {
   console.log('\n--- 2. Double-Entry Ledger Tests ---');
   const entries = [
     { walletId: 'w-user', direction: 'DEBIT' as const, amountMinor: 1000n },
-    { walletId: 'w-merchant', direction: 'CREDIT' as const, amountMinor: 1000n },
+    { walletId: 'w-merchant', direction: 'CREDIT' as const, amountMinor: 970n },
+    { walletId: 'w-platform-fees', direction: 'CREDIT' as const, amountMinor: 30n },
   ];
 
   let isValidLedger = true;
@@ -54,12 +55,12 @@ async function runTests() {
   } catch (e) {
     isValidLedger = false;
   }
-  assert(isValidLedger, 'validateBalancedEntries: Balanced debit/credit entries pass validation');
+  assert(isValidLedger, 'validateBalancedEntries: Balanced debit/credit entries (1000 = 970 + 30) pass validation');
 
   const reversed = reverseEntries(entries);
   assert(
-    reversed[0].direction === 'CREDIT' && reversed[1].direction === 'DEBIT',
-    'reverseEntries: Flips DEBIT -> CREDIT and CREDIT -> DEBIT'
+    reversed[0].direction === 'CREDIT' && reversed[1].direction === 'DEBIT' && reversed[2].direction === 'DEBIT',
+    'reverseEntries: Flips DEBIT -> CREDIT and CREDIT -> DEBIT for full commission reversal'
   );
 
   // 3. Cryptographic QR Token Tests
@@ -119,6 +120,7 @@ async function runTests() {
 
   assert(hasPermission('ADMIN', 'refund.approve') === true, 'hasPermission: Admin has refund.approve permission');
   assert(hasPermission('CUSTOMER', 'refund.approve') === false, 'hasPermission: Customer does not have refund.approve permission');
+  assert(hasPermission('MERCHANT', 'refund.create') === true, 'hasPermission: Merchant has refund.create permission');
 
   // 7. Payment Provider Adapter & Settlement Calculation Tests
   console.log('\n--- 7. Payment Provider Adapter & Settlement Calculation Tests ---');
@@ -139,10 +141,21 @@ async function runTests() {
   const sameAdminAppr = await approveBySecondAdmin(dualAppr.approvalRecord.id, 'admin-1');
   assert(sameAdminAppr.success === false, 'approveBySecondAdmin: Prevents 1st admin from giving 2nd approval (4-Eye Principle)');
 
-  // 9. Real Idempotency Lock & Storage Tests
-  console.log('\n--- 9. Real Idempotency Lock & Storage Tests ---');
+  const secondAdminAppr = await approveBySecondAdmin(dualAppr.approvalRecord.id, 'admin-2');
+  assert(secondAdminAppr.success === true, 'approveBySecondAdmin: 2nd admin successfully grants approval');
+
+  // 9. Real Idempotency Lock & 409 Conflict Payload Hash Tests
+  console.log('\n--- 9. Real Idempotency Lock & 409 Conflict Payload Hash Tests ---');
   const ik = `idempotent-test-key-${Date.now()}`;
-  await saveIdempotentResult(ik, 'COMPLETED', 200, { paymentId: 'pay-999', status: 'SUCCESS' });
+  const originalPayload = { merchantId: 'm-1', amountMinor: 5000 };
+  const conflictingPayload = { merchantId: 'm-1', amountMinor: 9999 };
+
+  await acquireIdempotencyLock(ik, originalPayload, 60);
+  await saveIdempotentResult(ik, originalPayload, 'COMPLETED', 200, { paymentId: 'pay-999', status: 'SUCCESS' });
+
+  const conflictCheck = await acquireIdempotencyLock(ik, conflictingPayload, 60);
+  assert(conflictCheck.conflict === true, 'acquireIdempotencyLock: Returns 409 conflict when same key is submitted with different payload body');
+
   const retrievedIdempotency = await getIdempotentResult(ik);
   assert(retrievedIdempotency?.responseBody?.paymentId === 'pay-999', 'saveIdempotentResult/getIdempotentResult: Idempotency lock stored and retrieved');
 
@@ -158,7 +171,7 @@ async function runTests() {
   const mismatchLenSig = verifyWebhookSignature(rawBody, 'short_invalid_sig');
   assert(mismatchLenSig === false, 'verifyWebhookSignature: Length mismatch handled safely without timingSafeEqual Exception');
 
-  console.log(`\n🎉 Master Production Test Suite Completed: ${passedTests}/${totalTests} tests passed!`);
+  console.log(`\n🎉 Master Production Readiness Test Suite Completed: ${passedTests}/${totalTests} tests passed!`);
 }
 
 runTests().catch((err) => {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, UserSessionPayload } from './jwt';
+import { Permission, hasPermission } from './rbac';
 
 export interface AuthGuardResult {
   isAuthenticated: boolean;
@@ -52,4 +53,29 @@ export async function requireAuth(
   }
 
   return { isAuthenticated: true, user };
+}
+
+/**
+ * Enforces Granular Permission-Based Access Control inside Next.js API Route Handlers.
+ */
+export async function requirePermission(
+  request: NextRequest,
+  permission: Permission
+): Promise<AuthGuardResult> {
+  const auth = await requireAuth(request);
+  if (!auth.isAuthenticated || !auth.user) {
+    return auth;
+  }
+
+  if (!hasPermission(auth.user.role, permission)) {
+    return {
+      isAuthenticated: false,
+      errorResponse: NextResponse.json(
+        { success: false, error: `Erişim Engellendi: '${permission}' izni yetkileriniz arasında bulunmuyor.` },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return auth;
 }
