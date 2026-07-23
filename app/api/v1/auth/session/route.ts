@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest): Promise<Response> {
   const resolved = resolveAuthRuntime();
-  if ('response' in resolved) return resolved.response;
+  if (!resolved.ok) return resolved.response;
 
   const context = await authenticateRequest(request, resolved.runtime.sessions);
 
